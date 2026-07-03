@@ -51,7 +51,7 @@ services:
   web:
     build:
       context: ./web
-      target: base
+      target: dev
     environment:
       REDIS_URL: redis://redis:6379
       DATA_DIR: /data

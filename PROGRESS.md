@@ -9,7 +9,7 @@
 - [x] STEP 6 - 악보 미리보기(OSMD)
 - [x] STEP 7 - 보안·안정성 강화
 - [x] STEP 8 - E2E 테스트 & 품질 코퍼스
-- [ ] STEP 9 - 배포 구성
+- [x] STEP 9 - 배포 구성
 - [ ] STEP 10 - 차별화 기능 백로그
 
 ## 검증 메모
@@ -22,3 +22,4 @@
 - STEP 6: OSMD 기반 MXL 미리보기 컴포넌트를 구현했다. 실제 MXL 렌더 스크린샷은 Docker/Redis 부재로 실행하지 못했다.
 - STEP 7: worker 격리, Redis 레이트리밋, 큐 심도 보호, 24시간 정리 작업, healthcheck를 구현했다. Docker CLI가 없어 격리/429/TTL 실측은 실행하지 못했다.
 - STEP 8: MXL 검증 유틸, Playwright E2E, 품질 코퍼스 스크립트를 추가했다. Docker/Redis/Audiveris 런타임 부재로 E2E와 코퍼스 실측은 실행하지 못했다.
+- STEP 9: production compose, Caddyfile, .env.example, DEPLOY.md를 추가했다. Docker CLI가 없어 로컬 프로덕션 리허설은 실행하지 못했다.
