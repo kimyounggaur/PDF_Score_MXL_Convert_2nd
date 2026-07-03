@@ -44,5 +44,19 @@ RUN mkdir -p /opt/audiveris \
 USER node
 WORKDIR /app
 
-CMD ["node", "--version"]
+FROM audiveris-runtime AS worker
 
+USER root
+WORKDIR /app
+
+COPY package.json tsconfig.json ./
+COPY src ./src
+
+RUN npm install \
+  && npm run build \
+  && npm prune --omit=dev \
+  && chown -R node:node /app /data
+
+USER node
+
+CMD ["node", "dist/src/worker.js"]

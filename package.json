@@ -1,0 +1,10 @@
+{
+  "name": "pdf-score-mxl",
+  "private": true,
+  "packageManager": "pnpm@11.7.0",
+  "scripts": {
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck"
+  }
+}
+

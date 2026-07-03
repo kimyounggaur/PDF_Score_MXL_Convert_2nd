@@ -1,5 +1,33 @@
-# Services are added step by step:
-# - redis: BullMQ backing store
-# - worker: Audiveris conversion worker
-# - web: Next.js API and UI
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
+  worker:
+    build:
+      context: ./worker
+      target: worker
+    environment:
+      REDIS_URL: redis://redis:6379
+      DATA_DIR: /data
+      AUDIVERIS_BIN: /opt/audiveris/bin/Audiveris
+      CONVERSION_TIMEOUT_MS: "1200000"
+      JAVA_OPTS: "-Xmx4g -Djava.awt.headless=true"
+    volumes:
+      - ./data:/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    mem_limit: 5g
+    cpus: 2
+
+volumes:
+  redisdata:
