@@ -15,3 +15,5 @@ test-results/
 
 samples/*.pdf
 !samples/.gitkeep
+
+.vercel/
