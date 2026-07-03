@@ -26,9 +26,9 @@ export type ConversionFailureCode =
 export class ConversionError extends Error {
   constructor(
     public readonly code: ConversionFailureCode,
-    message: string = code,
+    public readonly details?: string,
   ) {
-    super(message);
+    super(code);
     this.name = "ConversionError";
   }
 }

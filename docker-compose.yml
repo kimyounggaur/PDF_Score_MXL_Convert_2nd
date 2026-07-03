@@ -29,5 +29,22 @@ services:
     mem_limit: 5g
     cpus: 2
 
+  web:
+    build:
+      context: ./web
+      target: base
+    environment:
+      REDIS_URL: redis://redis:6379
+      DATA_DIR: /data
+      NODE_ENV: development
+      NEXT_TELEMETRY_DISABLED: "1"
+    volumes:
+      - ./data:/data
+    ports:
+      - "3000:3000"
+    depends_on:
+      redis:
+        condition: service_healthy
+
 volumes:
   redisdata:
