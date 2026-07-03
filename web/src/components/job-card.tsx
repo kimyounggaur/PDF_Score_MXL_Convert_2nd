@@ -1,9 +1,11 @@
 "use client";
 
 import { Download, FileMusic, RefreshCw, XCircle } from "lucide-react";
+import { useState } from "react";
 import type { StoredJob } from "@/lib/client-types";
 import { formatBytes, resultFileLabel, stageLabel } from "@/lib/ui";
 import { useJobStatus } from "@/hooks/use-job-status";
+import { ScorePreview } from "./score-preview";
 import { Alert } from "./ui/alert";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -11,6 +13,7 @@ import { Card, CardContent, CardHeader } from "./ui/card";
 import { Progress } from "./ui/progress";
 
 export function JobCard({ job, onRemove }: { job: StoredJob; onRemove: (jobId: string) => void }) {
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const { status, isLoading, error } = useJobStatus(job.jobId);
   const state = status?.status ?? "queued";
   const progress = status?.progress?.pct ?? (state === "queued" ? 3 : 0);
@@ -61,7 +64,11 @@ export function JobCard({ job, onRemove }: { job: StoredJob; onRemove: (jobId: s
                   </Button>
                 </a>
               ))}
+              <Button variant="primary" onClick={() => setIsPreviewOpen((value) => !value)}>
+                {isPreviewOpen ? "미리보기 닫기" : "미리보기"}
+              </Button>
             </div>
+            {isPreviewOpen ? <ScorePreview jobId={job.jobId} files={status.files} /> : null}
           </div>
         ) : null}
 
@@ -95,4 +102,3 @@ function badgeForState(state: string, isLoading: boolean): { label: string; tone
 
   return { label: "대기 중", tone: "amber" };
 }
-
