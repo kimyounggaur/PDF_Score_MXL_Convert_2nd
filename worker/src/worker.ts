@@ -3,6 +3,9 @@ import { QUEUE_NAME } from "./config.js";
 import { getRedisConnectionOptions } from "./queue.js";
 import { runAudiverisConversion } from "./audiveris.js";
 import { ConversionError, type ConversionJobData } from "./types.js";
+import { startMaintenance } from "./maintenance.js";
+
+const maintenance = startMaintenance();
 
 const worker = new Worker<ConversionJobData>(
   QUEUE_NAME,
@@ -60,6 +63,7 @@ worker.on("failed", (job, error) => {
 
 const shutdown = async () => {
   console.log(JSON.stringify({ level: "info", event: "worker_shutdown" }));
+  await maintenance.close();
   await worker.close();
 };
 

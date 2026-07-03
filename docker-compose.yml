@@ -10,6 +10,9 @@ services:
       interval: 10s
       timeout: 3s
       retries: 5
+    networks:
+      - app
+      - worker_internal
 
   worker:
     build:
@@ -28,6 +31,22 @@ services:
         condition: service_healthy
     mem_limit: 5g
     cpus: 2
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /home/node
+    networks:
+      - worker_internal
+    healthcheck:
+      test: ["CMD", "node", "-e", "process.exit(0)"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
 
   web:
     build:
@@ -45,6 +64,18 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+    networks:
+      - app
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
 
 volumes:
   redisdata:
+
+networks:
+  app:
+  worker_internal:
+    internal: true

@@ -7,10 +7,21 @@ import { sanitizeFileName } from "@/lib/filenames";
 import { inputPdfPath, jobDir, metadataPath } from "@/lib/paths";
 import { validatePdf } from "@/lib/pdf";
 import { getConversionQueue } from "@/lib/queue";
+import { checkUploadRateLimit, requestIp } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 
 export async function POST(request: NextRequest) {
+  const rateLimit = await checkUploadRateLimit(requestIp(request));
+  if (!rateLimit.ok) {
+    return jsonError("RATE_LIMITED", 429);
+  }
+
+  const counts = await getConversionQueue().getJobCounts("waiting", "active");
+  if ((counts.waiting ?? 0) + (counts.active ?? 0) >= 20) {
+    return jsonError("QUEUE_FULL", 429);
+  }
+
   const contentLength = Number(request.headers.get("content-length") ?? 0);
   if (contentLength > MAX_UPLOAD_BYTES) {
     return jsonError("FILE_TOO_LARGE", 413);
@@ -61,4 +72,3 @@ export async function POST(request: NextRequest) {
 
   return NextResponse.json({ jobId }, { status: 201 });
 }
-

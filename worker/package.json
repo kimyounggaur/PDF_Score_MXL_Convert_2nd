@@ -8,6 +8,7 @@
     "start": "node dist/worker.js",
     "dev": "tsx src/worker.ts",
     "enqueue": "tsx scripts/enqueue-test.ts",
+    "cleanup": "tsx scripts/cleanup-jobs.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

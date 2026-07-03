@@ -7,7 +7,7 @@
 - [x] STEP 4 - 프론트엔드 업로드 UI
 - [x] STEP 5 - 실시간 진행률(SSE)
 - [x] STEP 6 - 악보 미리보기(OSMD)
-- [ ] STEP 7 - 보안·안정성 강화
+- [x] STEP 7 - 보안·안정성 강화
 - [ ] STEP 8 - E2E 테스트 & 품질 코퍼스
 - [ ] STEP 9 - 배포 구성
 - [ ] STEP 10 - 차별화 기능 백로그
@@ -20,3 +20,4 @@
 - STEP 4: 업로드 UI와 폴링 기반 작업 카드를 구현했다. Docker/Redis가 없어 실제 업로드-변환 UI 회귀는 실행하지 못했고, Next 빌드로 정적 검증했다.
 - STEP 5: SSE 엔드포인트와 EventSource 기반 상태 훅을 구현했다. Docker/Redis가 없어 curl -N 이벤트 스트림 실측은 실행하지 못했다.
 - STEP 6: OSMD 기반 MXL 미리보기 컴포넌트를 구현했다. 실제 MXL 렌더 스크린샷은 Docker/Redis 부재로 실행하지 못했다.
+- STEP 7: worker 격리, Redis 레이트리밋, 큐 심도 보호, 24시간 정리 작업, healthcheck를 구현했다. Docker CLI가 없어 격리/429/TTL 실측은 실행하지 못했다.
