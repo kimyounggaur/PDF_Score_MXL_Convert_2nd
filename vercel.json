@@ -3,6 +3,5 @@
   "framework": "nextjs",
   "installCommand": "pnpm install --no-frozen-lockfile",
   "buildCommand": "pnpm --filter @pdf-score-mxl/web build",
-  "outputDirectory": "web/.next"
+  "outputDirectory": ".next"
 }
-
