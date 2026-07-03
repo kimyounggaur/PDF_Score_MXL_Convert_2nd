@@ -7,6 +7,7 @@ import { inputPdfPath, outputDir } from "./paths.js";
 import { parseAudiverisProgress } from "./progress.js";
 import type { ConversionJobData, ConversionProgress, ConversionResult } from "./types.js";
 import { ConversionError } from "./types.js";
+import { validateMxl } from "./validate-mxl.js";
 
 const MAX_LOG_LINES = 500;
 
@@ -105,6 +106,13 @@ export async function runAudiverisConversion(job: Job<ConversionJobData>): Promi
           throw new ConversionError("NO_OUTPUT");
         }
 
+        for (const file of files) {
+          const validation = await validateMxl(path.join(outDir, file.name));
+          if (!validation.ok) {
+            throw new ConversionError("INVALID_OUTPUT", validation.reason);
+          }
+        }
+
         await job.updateProgress({ pct: 100, stage: "completed" });
         resolve({
           files,
@@ -152,4 +160,3 @@ function killProcessGroup(pid: number | undefined) {
     }
   }
 }
-

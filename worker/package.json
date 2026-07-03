@@ -9,6 +9,7 @@
     "dev": "tsx src/worker.ts",
     "enqueue": "tsx scripts/enqueue-test.ts",
     "cleanup": "tsx scripts/cleanup-jobs.ts",
+    "corpus": "tsx scripts/corpus-report.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

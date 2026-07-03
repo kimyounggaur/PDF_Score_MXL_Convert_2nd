@@ -3,7 +3,6 @@ packages:
   - "worker"
 allowBuilds:
   esbuild: true
+  gl: false
   msgpackr-extract: true
   sharp: true
-ignoredBuiltDependencies:
-  - gl

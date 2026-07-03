@@ -25,10 +25,12 @@
   - `DATA_DIR=<저장소 루트>/data`
   - redis 포트 노출과 `./data` bind mount는 compose가 제공
 - 워커 큐 테스트: `cd worker && REDIS_URL=redis://localhost:6379 DATA_DIR=../data npm run enqueue -- ../samples/simple.pdf`
+- 워커 정리 작업 수동 실행: `cd worker && DATA_DIR=../data npm run cleanup`
+- E2E 테스트: `cd web && RATE_LIMIT_DISABLED=1 npx playwright test`
+- 품질 코퍼스: `cd worker && REDIS_URL=redis://localhost:6379 DATA_DIR=../data npm run corpus`
 - 테스트: 각 STEP에서 추가
 
 ## 진행 규칙
 
 - 매 STEP 시작: CLAUDE.md와 PROGRESS.md를 먼저 읽는다.
 - 매 STEP 종료: 검증 증거 제시 -> PROGRESS.md 갱신 -> 커밋
-
