@@ -1,7 +1,7 @@
 # 진행 상황
 
 - [x] STEP 0 - 프로젝트 부트스트랩 & CLAUDE.md
-- [ ] STEP 1 - Audiveris 변환 엔진 Docker화
+- [x] STEP 1 - Audiveris 변환 엔진 Docker화
 - [ ] STEP 2 - 변환 워커
 - [ ] STEP 3 - 웹 API
 - [ ] STEP 4 - 프론트엔드 업로드 UI
@@ -12,3 +12,6 @@
 - [ ] STEP 9 - 배포 구성
 - [ ] STEP 10 - 차별화 기능 백로그
 
+## 검증 메모
+
+- STEP 1: Docker CLI가 현재 Windows 환경 PATH에 없어 로컬 빌드/스모크 테스트는 실행하지 못했다. `worker/Dockerfile`과 `worker/smoke-test.sh`는 설계서 요구사항대로 작성했다.
