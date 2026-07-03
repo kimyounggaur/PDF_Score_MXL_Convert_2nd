@@ -1,0 +1,16 @@
+node_modules/
+.next/
+dist/
+coverage/
+playwright-report/
+test-results/
+
+/data/
+/.smoke-out/
+*.log
+.env*
+!.env.example
+
+samples/*.pdf
+!samples/.gitkeep
+

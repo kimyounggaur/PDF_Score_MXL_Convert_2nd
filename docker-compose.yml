@@ -1,0 +1,5 @@
+# Services are added step by step:
+# - redis: BullMQ backing store
+# - worker: Audiveris conversion worker
+# - web: Next.js API and UI
+
