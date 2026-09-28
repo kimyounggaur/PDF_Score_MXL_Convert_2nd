@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { ExternalLink, Loader2, Maximize2, Minimize2, Minus, Plus } from "lucide-react";
 import type { JobFile, JobWarning } from "@/lib/client-types";
 import { cn, resultFileLabel } from "@/lib/ui";
@@ -43,6 +43,8 @@ export function ScorePreview({
   const [controlError, setControlError] = useState<string | null>(null);
   const previewRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const sourceTabRef = useRef<HTMLButtonElement>(null);
+  const convertedTabRef = useRef<HTMLButtonElement>(null);
   const osmdRef = useRef<OsmdInstance | null>(null);
   const loadedKeyRef = useRef<string | null>(null);
   const loadVersionRef = useRef(0);
@@ -232,26 +234,46 @@ export function ScorePreview({
     }
   };
 
+  const moveMobileTab = (event: KeyboardEvent<HTMLButtonElement>) => {
+    let nextTab: "source" | "converted" | null = null;
+
+    if (event.key === "Home") {
+      nextTab = "source";
+    } else if (event.key === "End") {
+      nextTab = "converted";
+    } else if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+      nextTab = mobileTab === "source" ? "converted" : "source";
+    }
+
+    if (!nextTab) {
+      return;
+    }
+
+    event.preventDefault();
+    setMobileTab(nextTab);
+    (nextTab === "source" ? sourceTabRef : convertedTabRef).current?.focus();
+  };
+
   return (
     <div
       ref={previewRef}
       className={cn(
-        "mt-4 min-w-0 space-y-4 overflow-auto rounded-lg border border-slate-200 bg-slate-50 p-4",
-        isFullscreen && "h-screen w-screen rounded-none border-0 bg-white",
+        "mt-5 min-w-0 space-y-5 overflow-auto border-y border-[#BCC7D0] bg-[#F6F8FA] px-0 py-5 text-[#17232D]",
+        isFullscreen && "h-screen w-screen border-0 bg-[#F6F8FA] p-4 sm:p-6",
       )}
       data-testid="score-preview"
       aria-busy={isLoading}
     >
-      <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-        <Alert tone="warning" className="min-w-0 lg:flex-1">
+      <div className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <Alert tone="warning" className="min-w-0 rounded-none border-x-0 border-y-[#BCC7D0] bg-transparent px-0 text-[#17232D] lg:flex-1">
           자동 인식 결과입니다. 잇단음표·꾸밈음 등은 원본과 다를 수 있으니 다운로드 후 편집 프로그램에서 확인하세요.
         </Alert>
-        <div className="flex max-w-full flex-wrap items-center gap-2">
+        <div className="flex w-full max-w-full flex-wrap items-center gap-2 lg:w-auto lg:justify-end">
           {files.length > 1 ? (
-            <label className="flex min-w-0 items-center gap-2 text-sm font-medium text-slate-700">
+            <label className="flex min-w-0 flex-1 items-center gap-2 text-sm font-semibold text-[#596873] sm:flex-none">
               결과
               <select
-                className="h-10 min-w-0 max-w-48 rounded-md border border-slate-300 bg-white px-3 text-sm"
+                className="h-11 min-w-0 flex-1 border border-[#596873] bg-white px-3 text-sm text-[#17232D] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#245C9E] sm:max-w-48"
                 value={selectedName}
                 onChange={(event) => setSelectedName(event.target.value)}
                 disabled={isLoading}
@@ -280,22 +302,22 @@ export function ScorePreview({
       </div>
 
       {typeof selectedFile?.measureCount === "number" || partEntries.length > 0 || skippedPages.length > 0 ? (
-        <dl className="flex flex-wrap gap-x-6 gap-y-2 rounded-md border border-slate-200 bg-white px-4 py-3 text-sm" data-testid="preview-summary">
+        <dl className="flex flex-wrap gap-x-6 gap-y-2 border-y border-[#BCC7D0] bg-white px-3 py-3 text-sm sm:px-4" data-testid="preview-summary">
           {typeof selectedFile?.measureCount === "number" ? (
             <div className="flex gap-1">
-              <dt className="font-medium text-slate-600">총 마디:</dt>
-              <dd className="text-slate-950">{selectedFile.measureCount}개</dd>
+              <dt className="font-semibold text-[#596873]">총 마디:</dt>
+              <dd className="tabular-nums text-[#17232D]">{selectedFile.measureCount}개</dd>
             </div>
           ) : null}
           {partEntries.length > 0 ? (
             <>
               <div className="flex gap-1">
-                <dt className="font-medium text-slate-600">파트:</dt>
-                <dd className="text-slate-950">{partEntries.length}개</dd>
+                <dt className="font-semibold text-[#596873]">파트:</dt>
+                <dd className="tabular-nums text-[#17232D]">{partEntries.length}개</dd>
               </div>
               <div className="flex min-w-0 flex-wrap gap-1">
-                <dt className="font-medium text-slate-600">파트별 마디:</dt>
-                <dd className="break-words text-slate-950">
+                <dt className="font-semibold text-[#596873]">파트별 마디:</dt>
+                <dd className="break-words text-[#17232D]">
                   {partEntries.map(([partId, count]) => `${partId} ${count}마디`).join(" · ")}
                 </dd>
               </div>
@@ -303,8 +325,8 @@ export function ScorePreview({
           ) : null}
           {skippedPages.length > 0 ? (
             <div className="flex gap-1">
-              <dt className="font-medium text-slate-600">인식 제외:</dt>
-              <dd className="text-slate-950">{skippedPages.join(", ")}쪽</dd>
+              <dt className="font-semibold text-[#596873]">인식 제외:</dt>
+              <dd className="tabular-nums text-[#B1304A]">{skippedPages.join(", ")}쪽</dd>
             </div>
           ) : null}
         </dl>
@@ -316,45 +338,53 @@ export function ScorePreview({
         </Alert>
       ) : null}
 
-      <div className="grid grid-cols-2 gap-2 lg:hidden" role="tablist" aria-label="미리보기 선택">
+      <div className="grid grid-cols-2 border-b border-[#BCC7D0] lg:hidden" role="tablist" aria-label="미리보기 선택">
         <Button
+          ref={sourceTabRef}
           type="button"
           variant={mobileTab === "source" ? "primary" : "secondary"}
           role="tab"
           id={`${tabsId}-source-tab`}
           aria-selected={mobileTab === "source"}
           aria-controls={sourcePanelId}
+          tabIndex={mobileTab === "source" ? 0 : -1}
           onClick={() => setMobileTab("source")}
+          onKeyDown={moveMobileTab}
+          className="rounded-none border-0 border-b-2"
         >
           원본
         </Button>
         <Button
+          ref={convertedTabRef}
           type="button"
           variant={mobileTab === "converted" ? "primary" : "secondary"}
           role="tab"
           id={`${tabsId}-converted-tab`}
           aria-selected={mobileTab === "converted"}
           aria-controls={convertedPanelId}
+          tabIndex={mobileTab === "converted" ? 0 : -1}
           onClick={() => setMobileTab("converted")}
+          onKeyDown={moveMobileTab}
+          className="rounded-none border-0 border-b-2"
         >
           변환 결과
         </Button>
       </div>
 
-      <div className="grid min-w-0 gap-4 lg:grid-cols-2">
+      <div className="grid min-w-0 gap-6 lg:grid-cols-2 lg:gap-0 lg:border-y lg:border-[#BCC7D0]">
         <section
           id={sourcePanelId}
           role="tabpanel"
           aria-labelledby={`${tabsId}-source-tab`}
-          className={cn("min-w-0 space-y-3", mobileTab === "source" ? "block" : "hidden", "lg:block")}
+          className={cn("min-w-0 space-y-3 lg:py-5 lg:pr-5", mobileTab === "source" ? "block" : "hidden", "lg:block")}
           data-testid="source-preview"
         >
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h3 className="font-semibold text-slate-950">원본 PDF</h3>
-            <label className="flex items-center gap-2 text-sm text-slate-700">
+            <h3 className="text-lg font-semibold tracking-[-0.01em] text-[#17232D]">원본 PDF</h3>
+            <label className="flex items-center gap-2 text-sm font-medium text-[#596873]">
               원본 쪽
               <select
-                className="h-9 rounded-md border border-slate-300 bg-white px-2 text-sm"
+                className="h-11 border border-[#596873] bg-white px-2 text-sm text-[#17232D] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#245C9E]"
                 value={sourcePage}
                 onChange={(event) => setSourcePage(Number(event.target.value))}
                 aria-label="원본 PDF 쪽"
@@ -369,12 +399,12 @@ export function ScorePreview({
           </div>
           {isDesktop ? (
             <iframe
-              className="h-[70vh] min-h-[620px] w-full rounded-md border border-slate-200 bg-white"
+              className="h-[70vh] min-h-[620px] w-full border border-[#BCC7D0] bg-white"
               src={sourceUrl}
               title={`원본 PDF ${sourcePage}쪽`}
             />
           ) : (
-            <div className="rounded-md border border-slate-200 bg-white p-5 text-sm text-slate-600 lg:hidden">
+            <div className="border border-[#BCC7D0] bg-white p-4 text-sm leading-6 text-[#596873] sm:p-5 lg:hidden">
               <p>모바일 브라우저에서는 원본 PDF를 새 탭에서 확인해 주세요.</p>
               <a
                 href={sourceUrl}
@@ -393,11 +423,11 @@ export function ScorePreview({
           id={convertedPanelId}
           role="tabpanel"
           aria-labelledby={`${tabsId}-converted-tab`}
-          className={cn("min-w-0 space-y-3", mobileTab === "converted" ? "block" : "hidden", "lg:block")}
+          className={cn("min-w-0 space-y-3 lg:border-l lg:border-[#BCC7D0] lg:py-5 lg:pl-5", mobileTab === "converted" ? "block" : "hidden", "lg:block")}
         >
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h3 className="font-semibold text-slate-950">변환 결과</h3>
-            <div className="flex max-w-full items-center gap-1" aria-label="악보 확대·축소">
+            <h3 className="text-lg font-semibold tracking-[-0.01em] text-[#17232D]">변환 결과</h3>
+            <div className="flex w-full max-w-full items-center gap-1 sm:w-auto" aria-label="악보 확대·축소">
               <Button
                 type="button"
                 variant="secondary"
@@ -415,11 +445,11 @@ export function ScorePreview({
                 step={ZOOM_STEP}
                 value={zoom}
                 onChange={(event) => changeZoom(Number(event.target.value))}
-                className="w-24 sm:w-32"
+                className="min-h-11 min-w-0 flex-1 accent-[#245C9E] sm:w-32 sm:flex-none"
                 aria-label="악보 확대 비율"
                 aria-valuetext={`${zoom}%`}
               />
-              <output className="w-12 text-center font-mono text-xs text-slate-600" aria-live="polite">
+              <output className="w-12 text-center text-sm font-semibold tabular-nums text-[#245C9E]" aria-live="polite">
                 {zoom}%
               </output>
               <Button
@@ -437,14 +467,14 @@ export function ScorePreview({
 
           {error ? <Alert tone="error">{error}</Alert> : null}
           {isLoading ? (
-            <div className="flex h-48 items-center justify-center gap-2 rounded-md bg-white text-sm text-slate-500" role="status" aria-live="polite">
-              <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
+            <div className="flex h-48 items-center justify-center gap-2 border border-[#BCC7D0] bg-white text-sm text-[#596873]" role="status" aria-live="polite">
+              <Loader2 className="h-5 w-5 motion-safe:animate-spin motion-reduce:animate-none" aria-hidden="true" />
               미리보기를 렌더링하는 중입니다.
             </div>
           ) : null}
           <div
             ref={containerRef}
-            className="min-h-48 max-w-full overflow-auto rounded-md bg-white p-3 sm:p-4"
+            className="min-h-48 max-w-full overflow-auto border border-[#BCC7D0] bg-white p-3 sm:p-4"
             role="region"
             aria-label="변환된 악보 미리보기"
             data-testid="converted-score"

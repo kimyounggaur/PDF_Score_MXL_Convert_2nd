@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { FileUp, Info, Loader2, Music2, ShieldCheck, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { FileUp, Info, Loader2, ShieldCheck, X } from "lucide-react";
 import { useDropzone, type FileRejection } from "react-dropzone";
 import type { StoredJob } from "@/lib/client-types";
 import { deserializeStoredJobs, pruneStoredJobs, serializeStoredJobs, STORED_JOBS_KEY } from "@/lib/job-storage";
@@ -21,6 +21,13 @@ type UploadState = {
   percent: number;
   phase: "transferring" | "verifying";
 };
+
+const UPLOAD_NOTICES = [
+  "인쇄 악보 전용입니다. 손글씨 악보는 지원하지 않습니다.",
+  "300DPI 이상의 선명한 스캔본을 권장합니다.",
+  "최대 30MB, 20쪽까지 변환할 수 있습니다.",
+  "보안이 설정된 PDF(열람 암호 또는 권한 제한)는 변환할 수 없습니다. 보안이 없는 원본 PDF로 다시 올려 주세요.",
+];
 
 export function UploadApp() {
   const [jobs, setJobs] = useState<StoredJob[]>([]);
@@ -179,16 +186,6 @@ export function UploadApp() {
     },
   });
 
-  const notice = useMemo(
-    () => [
-      "인쇄 악보 전용입니다. 손글씨 악보는 지원하지 않습니다.",
-      "300DPI 이상의 선명한 스캔본을 권장합니다.",
-      "최대 30MB, 20쪽까지 변환할 수 있습니다.",
-      "보안이 설정된 PDF(열람 암호 또는 권한 제한)는 변환할 수 없습니다. 보안이 없는 원본 PDF로 다시 올려 주세요.",
-    ],
-    [],
-  );
-
   const removeJob = useCallback((jobId: string) => {
     setJobs((current) => current.filter((item) => item.jobId !== jobId));
   }, []);
@@ -202,59 +199,64 @@ export function UploadApp() {
   }, []);
 
   return (
-    <main className="min-h-screen bg-slate-50">
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-8 px-5 py-8 sm:px-8 lg:py-12">
+    <main className="min-h-screen overflow-x-hidden bg-[#F6F8FA] text-[#17232D]">
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-4 py-6 sm:px-8 sm:py-9 lg:gap-10 lg:px-10 lg:py-12">
         {isUnavailable ? (
           <Alert tone="warning" role="status" aria-live="polite" data-testid="service-status-banner">
             변환 서버를 점검하고 있습니다. 잠시 후 다시 시도해 주세요.
           </Alert>
         ) : null}
 
-        <header className="flex flex-col gap-4 border-b border-slate-200 pb-6 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <div className="flex items-center gap-2 text-sm font-semibold text-teal-700">
-              <Music2 className="h-4 w-4" aria-hidden="true" />
-              PDF Score to MXL
+        <header className="relative border-b-2 border-[#17232D] pb-7 pt-1 sm:pb-9">
+          <div className="grid gap-7 lg:grid-cols-[minmax(0,1fr)_19rem] lg:items-end">
+            <div className="min-w-0 border-l-4 border-[#245C9E] pl-4 sm:pl-6">
+              <h1 className="text-[clamp(2rem,7vw,3.5rem)] font-semibold leading-[1.04] tracking-[-0.035em] text-[#17232D]">
+                PDF 악보 MXL 변환
+              </h1>
+              <p className="mt-4 max-w-2xl text-base leading-7 text-[#596873] sm:text-lg">
+                인쇄 악보 PDF를 MusicXML(MXL)로 변환합니다.
+              </p>
             </div>
-            <h1 className="mt-3 text-3xl font-semibold tracking-normal text-slate-950 sm:text-4xl">
-              PDF 악보 MXL 변환
-            </h1>
-            <p className="mt-3 max-w-2xl text-base leading-7 text-slate-600">
-              인쇄 악보 PDF를 MusicXML(MXL)로 변환합니다.
-            </p>
+
+            <div className="border-y border-[#BCC7D0] py-3 text-sm leading-6 text-[#596873]">
+              PDF를 올리면 악보를 인식하고, 원본과 변환 결과를 나란히 확인할 수 있습니다.
+            </div>
           </div>
         </header>
 
-        <section className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
-          <Card>
-            <CardContent>
+        <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem] lg:gap-8" aria-labelledby="upload-heading">
+          <Card className="rounded-none border-[#BCC7D0] bg-white shadow-none">
+            <CardContent className="p-0">
               <div
                 {...getRootProps()}
                 className={cn(
-                  "flex min-h-64 flex-col items-center justify-center rounded-lg border-2 border-dashed px-6 py-10 text-center transition-colors",
-                  isDragActive ? "border-teal-600 bg-teal-50" : "border-slate-300 bg-white",
-                  !canUpload && "cursor-not-allowed opacity-70",
+                  "relative flex min-h-72 flex-col items-center justify-center border-l-4 px-4 py-10 text-center motion-safe:transition-colors sm:px-8 sm:py-12",
+                  isDragActive ? "border-[#245C9E] bg-[#EEF4FA]" : "border-[#BCC7D0] bg-white",
+                  !canUpload && "cursor-not-allowed",
                 )}
               >
-                <input {...getInputProps()} />
-                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-teal-100 text-teal-800">
-                  {isUploading ? <Loader2 className="h-7 w-7 animate-spin" aria-hidden="true" /> : <FileUp className="h-7 w-7" aria-hidden="true" />}
+                <input {...getInputProps({ "aria-label": "PDF 악보 파일 선택" })} />
+                <p id="upload-heading" className="absolute left-4 top-4 text-sm font-semibold text-[#245C9E] sm:left-6 sm:top-5">
+                  새 악보 등록
+                </p>
+                <div className="flex h-14 w-14 items-center justify-center border border-[#245C9E] bg-[#EEF4FA] text-[#245C9E]">
+                  {isUploading ? <Loader2 className="h-7 w-7 motion-safe:animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <FileUp className="h-7 w-7" aria-hidden="true" />}
                 </div>
-                <p className="mt-5 text-lg font-semibold text-slate-950">
+                <p className="mt-5 text-lg font-semibold text-[#17232D] sm:text-xl">
                   {isDragActive ? "여기에 놓으면 업로드합니다" : "PDF 악보를 끌어다 놓으세요"}
                 </p>
-                <p className="mt-2 text-sm text-slate-500">한 번에 5개 · 파일당 최대 30MB, 20쪽</p>
+                <p className="mt-2 text-sm leading-6 text-[#596873]">한 번에 5개 · 파일당 최대 30MB, 20쪽</p>
                 <Button className="mt-6" onClick={open} disabled={isUploading || !canUpload}>
                   <FileUp className="h-4 w-4" aria-hidden="true" />
                   {isCheckingService && !serviceStatus ? "서버 확인 중" : "PDF 선택"}
                 </Button>
                 {uploadState ? (
                   <div className="mt-6 w-full max-w-md space-y-3" aria-live="polite" data-testid="upload-status">
-                    <div className="flex min-w-0 items-center justify-between gap-3 text-sm text-slate-700">
+                    <div className="flex min-w-0 flex-col gap-1 text-left text-sm text-[#596873] sm:flex-row sm:items-center sm:justify-between sm:gap-3">
                       <span className="min-w-0 truncate">
                         {uploadState.current}/{uploadState.total} · {uploadState.fileName}
                       </span>
-                      <span className="shrink-0 font-mono text-xs">
+                      <span className="shrink-0 font-semibold tabular-nums text-[#245C9E]">
                         {uploadState.phase === "transferring" ? `${uploadState.percent}%` : "서버 확인 중"}
                       </span>
                     </div>
@@ -269,7 +271,7 @@ export function UploadApp() {
                         업로드 취소
                       </Button>
                     ) : (
-                      <p className="text-xs text-slate-500">파일 전송을 마쳤습니다. PDF를 확인하고 있습니다.</p>
+                      <p className="text-sm text-[#596873]">파일 전송을 마쳤습니다. PDF를 확인하고 있습니다.</p>
                     )}
                   </div>
                 ) : null}
@@ -277,31 +279,31 @@ export function UploadApp() {
             </CardContent>
           </Card>
 
-          <div className="space-y-4">
-            <Alert tone="warning">
+          <aside className="space-y-4 border-t-2 border-[#17232D] pt-4" aria-label="업로드 안내">
+            <Alert tone="warning" className="rounded-none border-x-0 border-b-0 border-t-[#BCC7D0] bg-transparent px-0 py-4 text-[#17232D]">
               <div className="flex items-start gap-2">
-                <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-                <ul className="space-y-1">
-                  {notice.map((item) => (
+                <Info className="mt-1 h-4 w-4 shrink-0 text-[#B1304A]" aria-hidden="true" />
+                <ul className="space-y-2 leading-6">
+                  {UPLOAD_NOTICES.map((item) => (
                     <li key={item}>{item}</li>
                   ))}
                 </ul>
               </div>
             </Alert>
-            <Alert tone="info">
+            <Alert tone="info" className="rounded-none border-x-0 border-b-0 border-t-[#BCC7D0] bg-transparent px-0 py-4 text-[#17232D]">
               <div className="flex items-start gap-2">
-                <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                <ShieldCheck className="mt-1 h-4 w-4 shrink-0 text-[#245C9E]" aria-hidden="true" />
                 <span>파일명은 저장 경로에 사용하지 않고, 결과는 24시간 후 자동 삭제됩니다.</span>
               </div>
             </Alert>
-          </div>
+          </aside>
         </section>
 
         {message ? <Alert tone={message.tone}>{message.text}</Alert> : null}
 
-        <section className="space-y-4">
-          <div className="flex items-center justify-between gap-4">
-            <h2 className="text-xl font-semibold text-slate-950">작업 목록</h2>
+        <section className="space-y-5 border-t-2 border-[#17232D] pt-5" aria-labelledby="job-list-heading">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <h2 id="job-list-heading" className="text-xl font-semibold tracking-[-0.015em] text-[#17232D] sm:text-2xl">작업 목록</h2>
             {jobs.length > 0 ? (
               <Button variant="ghost" size="sm" onClick={() => setJobs([])}>
                 목록 비우기
@@ -310,13 +312,13 @@ export function UploadApp() {
           </div>
 
           {jobs.length === 0 ? (
-            <Card>
-              <CardContent className="text-sm leading-6 text-slate-500">
+            <Card className="rounded-none border-x-0 border-y border-[#BCC7D0] bg-transparent shadow-none">
+              <CardContent className="px-0 py-6 text-sm leading-6 text-[#596873]">
                 아직 변환 작업이 없습니다. PDF를 업로드하면 진행 상태가 여기에 표시됩니다.
               </CardContent>
             </Card>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-5">
               {jobs.map((job) => (
                 <JobCard key={job.jobId} job={job} clock={clock} onRemove={removeJob} onReplace={replaceJob} />
               ))}
@@ -324,9 +326,9 @@ export function UploadApp() {
           )}
         </section>
 
-        <footer className="border-t border-slate-200 pt-5 text-sm text-slate-500">
+        <footer className="border-t border-[#BCC7D0] pt-5 text-sm leading-6 text-[#596873]">
           OMR 엔진: Audiveris {serviceStatus?.engineVersion ?? "확인 중"} (AGPL-3.0) -{" "}
-          <a className="font-medium text-teal-700 underline-offset-4 hover:underline" href="https://github.com/Audiveris/audiveris" target="_blank" rel="noreferrer">
+          <a className="font-semibold text-[#245C9E] underline-offset-4 hover:underline" href="https://github.com/Audiveris/audiveris" target="_blank" rel="noreferrer">
             소스 코드
           </a>
         </footer>

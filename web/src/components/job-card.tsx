@@ -13,6 +13,7 @@ import {
   progressLabel,
   resultFileLabel,
   skippedPagesLabel,
+  cn,
 } from "@/lib/ui";
 import { useJobStatus } from "@/hooks/use-job-status";
 import { ScorePreview } from "./score-preview";
@@ -52,6 +53,12 @@ export function JobCard({
       ? status.estimate
       : null;
   const estimateSeconds = estimate ? currentEstimateSeconds(status, clock, statusReceivedAt) : null;
+  const proofRule =
+    state === "failed" && !isCancelled
+      ? "border-l-[#B1304A]"
+      : state === "active" || state === "completed"
+        ? "border-l-[#245C9E]"
+        : "border-l-[#BCC7D0]";
 
   const cancelJob = async () => {
     if (cancelState !== "idle" || !isCancellable || !window.confirm("이 변환 작업을 취소할까요?")) {
@@ -115,14 +122,21 @@ export function JobCard({
   };
 
   return (
-    <Card className={isExpired ? "border-slate-200 bg-slate-100 shadow-none" : undefined} data-testid="job-card">
-      <CardHeader className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:gap-4">
+    <Card
+      className={cn(
+        "rounded-none border-[#BCC7D0] border-l-4 bg-white shadow-none",
+        proofRule,
+        isExpired && "bg-[#EEF1F3]",
+      )}
+      data-testid="job-card"
+    >
+      <CardHeader className="flex flex-col items-start justify-between gap-4 border-[#BCC7D0] px-4 py-4 sm:flex-row sm:px-5">
         <div className="min-w-0 max-w-full">
           <div className="flex items-center gap-2">
-            <FileMusic className="h-4 w-4 shrink-0 text-teal-700" aria-hidden="true" />
-            <h2 className="truncate text-base font-semibold text-slate-950">{job.fileName}</h2>
+            <FileMusic className="h-4 w-4 shrink-0 text-[#245C9E]" aria-hidden="true" />
+            <h2 className="min-w-0 break-all text-base font-semibold tracking-[-0.01em] text-[#17232D] sm:truncate sm:text-lg">{job.fileName}</h2>
           </div>
-          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
+          <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-sm text-[#596873]">
             <span>작업 ID: {job.jobId.slice(0, 8)}</span>
             {status?.meta ? (
               <span data-testid="job-meta">
@@ -145,7 +159,7 @@ export function JobCard({
               disabled={cancelState !== "idle"}
               data-testid="cancel-job"
             >
-              {cancelState === "requesting" ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
+              {cancelState === "requesting" ? <Loader2 className="h-4 w-4 motion-safe:animate-spin motion-reduce:animate-none" aria-hidden="true" /> : null}
               {cancelState === "idle" ? "취소" : "취소 중"}
             </Button>
           ) : !isExpired ? (
@@ -155,9 +169,9 @@ export function JobCard({
           ) : null}
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="px-4 py-5 sm:px-5">
         {isExpired ? (
-          <div className="flex flex-col items-start gap-3 text-sm text-slate-600">
+          <div className="flex flex-col items-start gap-3 text-sm text-[#596873]">
             <p>결과가 삭제되었습니다(24시간 경과).</p>
             <Button variant="secondary" size="sm" onClick={() => onRemove(job.jobId)}>
               목록에서 지우기
@@ -194,8 +208,8 @@ export function JobCard({
                 <Alert tone="error" data-testid="job-error" data-error-code={status.error.code}>
                   {status.error.message}
                 </Alert>
-                <div className="rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700" data-testid="failure-guidance">
-                  <p className="font-medium text-slate-900">확인해 볼 사항</p>
+                <div className="border-y border-r border-l-2 border-[#BCC7D0] border-l-[#B1304A] bg-[#FFF7F8] px-4 py-3 text-sm leading-6 text-[#596873]" data-testid="failure-guidance">
+                  <p className="font-semibold text-[#17232D]">확인해 볼 사항</p>
                   <ul className="mt-2 list-disc space-y-1 pl-5">
                     {failureGuidance(status.error.code).map((item) => (
                       <li key={item}>{item}</li>
@@ -203,7 +217,7 @@ export function JobCard({
                   </ul>
                 </div>
                 <Button type="button" variant="secondary" onClick={() => void retryJob()} disabled={isRetrying} data-testid="retry-job">
-                  {isRetrying ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <RefreshCw className="h-4 w-4" aria-hidden="true" />}
+                  {isRetrying ? <Loader2 className="h-4 w-4 motion-safe:animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <RefreshCw className="h-4 w-4" aria-hidden="true" />}
                   {isRetrying ? "새 작업 만드는 중" : "다시 시도"}
                 </Button>
               </div>
@@ -221,7 +235,7 @@ export function JobCard({
             ))}
 
             {state === "queued" && !isLoading ? (
-              <div className="space-y-1 text-sm text-slate-600">
+              <div className="space-y-1 border-l-2 border-[#BCC7D0] pl-3 text-sm text-[#596873]">
                 <p>변환을 기다리고 있습니다.</p>
                 {status?.queuePosition && status.queuePosition > 0 ? <p>대기 순번: {status.queuePosition}번째</p> : null}
               </div>
@@ -230,9 +244,9 @@ export function JobCard({
             {state === "active" ? (
               <div className="space-y-3">
                 <Progress value={progress} label={activeProgressLabel} />
-                <div className="flex items-center justify-between gap-3 text-sm text-slate-600">
+                <div className="flex items-center justify-between gap-3 text-sm text-[#596873]">
                   <span>{activeProgressLabel}</span>
-                  <span className="font-mono text-xs">{Math.round(progress)}%</span>
+                  <span className="font-semibold tabular-nums text-[#245C9E]">{Math.round(progress)}%</span>
                 </div>
               </div>
             ) : null}
@@ -249,7 +263,7 @@ export function JobCard({
                     >
                       <Download className="h-4 w-4" aria-hidden="true" />
                       {resultFileLabel(file.name, index, status.files?.length ?? 1)}
-                      <span className="font-mono text-xs text-slate-500">{formatBytes(file.bytes)}</span>
+                      <span className="text-sm tabular-nums text-[#596873]">{formatBytes(file.bytes)}</span>
                     </a>
                   ))}
                   <Button variant="primary" onClick={() => setIsPreviewOpen((value) => !value)}>
@@ -268,7 +282,7 @@ export function JobCard({
             ) : null}
 
             {!isLoading && !isExpired && (status?.timing || estimate) ? (
-              <dl className="mt-4 flex flex-wrap gap-x-6 gap-y-2 border-t border-slate-100 pt-3 text-xs text-slate-500">
+              <dl className="mt-5 flex flex-wrap gap-x-6 gap-y-2 border-t border-[#BCC7D0] pt-3 text-sm text-[#596873]">
                 {status?.timing ? (
                   <div className="flex gap-1" data-testid="job-elapsed">
                     <dt>경과 시간:</dt>
@@ -285,8 +299,8 @@ export function JobCard({
             ) : null}
 
             {isLoading ? (
-              <div className="flex items-center gap-2 text-sm text-slate-500">
-                <RefreshCw className="h-4 w-4 animate-spin" aria-hidden="true" />
+              <div className="flex items-center gap-2 text-sm text-[#596873]">
+                <RefreshCw className="h-4 w-4 motion-safe:animate-spin motion-reduce:animate-none" aria-hidden="true" />
                 상태를 확인하는 중입니다.
               </div>
             ) : null}

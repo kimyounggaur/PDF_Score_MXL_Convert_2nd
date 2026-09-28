@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes } from "react";
+import { forwardRef, type ButtonHTMLAttributes } from "react";
 import { cn } from "@/lib/ui";
 
 export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
@@ -10,20 +10,23 @@ type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
 };
 
 const variants = {
-  primary: "bg-teal-700 text-white hover:bg-teal-800 disabled:bg-slate-300",
-  secondary: "border border-slate-300 bg-white text-slate-900 hover:bg-slate-50 disabled:text-slate-400",
-  ghost: "text-slate-700 hover:bg-slate-100 disabled:text-slate-400",
-  danger: "bg-rose-600 text-white hover:bg-rose-700 disabled:bg-slate-300",
+  primary: "border-[#245C9E] bg-[#245C9E] text-white hover:border-[#17232D] hover:bg-[#17232D]",
+  secondary: "border-[#596873] bg-white text-[#17232D] hover:border-[#245C9E] hover:bg-[#EEF3F8] hover:text-[#245C9E]",
+  ghost: "border-transparent bg-transparent text-[#596873] hover:border-[#BCC7D0] hover:bg-white hover:text-[#17232D]",
+  danger: "border-[#B1304A] bg-[#B1304A] text-white hover:border-[#7A2033] hover:bg-[#7A2033]",
 };
 
 const sizes = {
-  sm: "h-9 px-3 text-sm",
-  md: "h-10 px-4 text-sm",
+  sm: "min-h-11 px-3 py-2 text-sm",
+  md: "min-h-11 px-4 py-2 text-sm",
 };
 
-export function Button({ className, variant = "primary", size = "md", ...props }: ButtonProps) {
-  return <button className={buttonClassName({ variant, size, className })} {...props} />;
-}
+export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
+  { className, variant = "primary", size = "md", ...props },
+  ref,
+) {
+  return <button ref={ref} className={buttonClassName({ variant, size, className })} {...props} />;
+});
 
 export function buttonClassName({
   className,
@@ -35,7 +38,7 @@ export function buttonClassName({
   size?: ButtonSize;
 } = {}) {
   return cn(
-    "inline-flex items-center justify-center gap-2 rounded-md font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700 disabled:cursor-not-allowed",
+    "inline-flex min-w-11 items-center justify-center gap-2 rounded-[2px] border font-semibold tracking-[-0.01em] transition-[background-color,border-color,color,transform] duration-150 focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-[#245C9E] active:translate-y-px motion-reduce:transition-none motion-reduce:active:translate-y-0 disabled:pointer-events-none disabled:border-[#BCC7D0] disabled:bg-[#E7ECEF] disabled:text-[#596873]",
     variants[variant],
     sizes[size],
     className,

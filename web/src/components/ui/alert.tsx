@@ -6,12 +6,12 @@ type AlertProps = HTMLAttributes<HTMLDivElement> & {
 };
 
 const tones = {
-  info: "border-sky-200 bg-sky-50 text-sky-950",
-  warning: "border-amber-200 bg-amber-50 text-amber-950",
-  error: "border-rose-200 bg-rose-50 text-rose-950",
+  info: "border-[#245C9E] bg-[#EEF3F8] text-[#17232D]",
+  warning: "border-[#596873] bg-[#F6F8FA] text-[#17232D]",
+  error: "border-[#B1304A] bg-[#F9EAED] text-[#17232D]",
 };
 
 export function Alert({ className, tone = "info", ...props }: AlertProps) {
-  return <div className={cn("rounded-lg border px-4 py-3 text-sm leading-6", tones[tone], className)} {...props} />;
+  return <div className={cn("rounded-[2px] border border-l-4 px-4 py-3 text-sm leading-6 shadow-none", tones[tone], className)} {...props} />;
 }
 
