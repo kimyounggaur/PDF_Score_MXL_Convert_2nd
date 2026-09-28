@@ -38,6 +38,10 @@
 - Docker가 공개한 포트는 UFW 규칙을 우회할 수 있다. 운영 compose에 web 3000번과 Redis 6379번 포트를 추가하지 말고 Caddy 80/443만 공개한다.
 - 운영 Next standalone은 `HOSTNAME=0.0.0.0`으로 바인딩한다. 그래야 컨테이너 내 `127.0.0.1:3000` 헬스체크와 Caddy 의존성이 정상 동작한다.
 - Vercel 단독 배포는 지원하지 않는다. 이 서비스는 Redis 큐, 상주 Audiveris 워커, web/worker 공유 디스크와 장시간 작업이 모두 필요하다.
+- 운영 명령은 `docker compose -f docker-compose.yml -f docker-compose.prod.yml ...`처럼 두 파일을 명시해 개발용 override를 제외한다.
+- `/api/health`는 web 프로세스 생존만 본다. `/api/status`는 HTTP 200이어도 부분 장애일 수 있으므로 `redis`, `workers`, `diskFreeBytes` 필드를 판정한다.
+- worker healthcheck는 Redis ping 성공 때 갱신되는 `/tmp/worker-heartbeat`를 사용한다. 운영에 `HEARTBEAT_DISABLED=1`을 설정하지 않는다.
+- 배포·갱신·장애 대응·백업 절차의 기준 문서는 `docs/DEPLOY.md`다. 실제 도메인 전체 흐름을 검증하지 않은 상태를 "배포 완료"로 보고하지 않는다.
 
 ## 진행 규칙
 
