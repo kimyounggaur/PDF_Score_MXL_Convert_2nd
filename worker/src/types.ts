@@ -32,6 +32,7 @@ export type ConversionResult = {
 };
 
 export type ConversionFailureCode =
+  | "CANCELLED"
   | "TIMEOUT"
   | "NO_OUTPUT"
   | "OUT_OF_MEMORY"

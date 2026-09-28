@@ -38,6 +38,7 @@ test("B. 텍스트 파일은 정확한 한국어 문구로 거부한다", async 
 
   try {
     await page.goto("/");
+    await waitForUploadReady(page);
     await page.locator('input[type="file"]').setInputFiles(textPath);
     await expect(page.getByText("PDF 파일만 업로드할 수 있으며 최대 크기는 30MB입니다.", { exact: true })).toBeVisible();
     await expect(page.getByTestId("job-card")).toHaveCount(0);
@@ -124,10 +125,15 @@ test("G. API는 21쪽 PDF와 존재하지 않는 작업을 정확한 코드로 �
 });
 
 async function uploadPdf(page: Page, fileName: string) {
+  await waitForUploadReady(page);
   await page.locator('input[type="file"]').setInputFiles(samplePath(fileName));
   const card = jobCardFor(page, fileName);
   await expect(card).toBeVisible();
   return card;
+}
+
+async function waitForUploadReady(page: Page) {
+  await expect(page.getByRole("button", { name: "PDF 선택", exact: true })).toBeEnabled();
 }
 
 function jobCardFor(page: Page, fileName: string) {

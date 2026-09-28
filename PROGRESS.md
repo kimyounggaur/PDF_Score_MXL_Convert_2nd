@@ -25,7 +25,7 @@
 - [x] V2-6 - 신뢰 가능한 E2E와 정확한 마디 수
 - [x] V2-7 - 재현 가능한 빌드
 - [x] V2-8 - 운영 보안 설정
-- [ ] V2-9 - 관측·복구·작업 취소
+- [x] V2-9 - 관측·복구·작업 취소
 - [ ] V2-10 - VPS 실서버 배포
 - [ ] V2-11 - 업로드·작업 카드 사용성
 - [ ] V2-12 - 미리보기·원본 나란히 보기
@@ -56,3 +56,4 @@
 - V2-6: `<measure(?=[\\s>])`만 집계하고 파트별 마디 수를 반환하도록 MXL 검증을 고쳤으며, 합성 MXL 단위 테스트로 `measure-numbering` 제외를 확인했다. E2E는 카드 범위의 엄격한 test ID, 실제 OSMD `.vf-notehead`, 정확한 오류 코드로 A~G 7개를 정의했다. 워커 22개 통과·2개 실MXL TODO, 웹 13개 통과, 전체 타입 검사, Playwright 7개 로드가 통과했다. Docker 부재로 실제 7개 E2E 실행과 버그 되돌림 실험은 미실행이다.
 - V2-7: Docker 빌드 컨텍스트를 저장소 루트로 통일하고 pnpm 11.7.0의 frozen lockfile·workspace filter 설치, 모노레포 standalone 실행 경로(`web/server.js`), Audiveris 버전 ARG·OCI 라벨, Gradle BuildKit 캐시, `JAVA_TOOL_OPTIONS=-Xmx4g`, 올바른 워커 시작 경로를 적용했다. 로컬 frozen 설치, 워커 단위 테스트 22개 통과·2개 TODO, 웹 단위 테스트 13개 통과, 전체 타입 검사·빌드, standalone `/api/health` 200 응답을 확인했다. Docker CLI가 없어 이미지 빌드·크기, Gradle 캐시 시간, 이미지 내부 버전, Audiveris 스모크와 JVM `Picked up JAVA_TOOL_OPTIONS` 로그는 미실행이다.
 - V2-8: 개발용 web/Redis 호스트 포트를 `docker-compose.override.yml`로 분리하고, 운영 Next standalone에 `HOSTNAME=0.0.0.0`을 지정했다. Caddy에 nosniff·Referrer-Policy·SAMEORIGIN·Server 제거를 적용했고 HSTS는 localhost가 아닌 요청에만 추가했다. 레이트리미트는 V2-5의 Redis MULTI(`INCR` + `EXPIRE NX`)와 순수 함수 테스트가 이미 요구를 충족함을 재확인했다. Vercel 설정·문서를 제거하고 VPS 전용 배포 경계를 문서화했다. 현재 환경에 Docker CLI가 없어 compose 합병 출력, 운영 헬스체크/Caddy, 헤더, 포트 차단, 6회 업로드 429 통합 검증은 미실행이다.
+- V2-9: 1초 제한의 부분 응답 `/api/status`, Redis·워커·저장 공간별 JSON 장애 코드, 서비스 상태 배너와 동적 엔진 버전, Redis 성공 기반 워커 heartbeat, TTL 취소 키와 BullMQ AbortSignal을 통한 실행 중 프로세스 그룹 종료, 대기 작업의 안전한 제거, Job Scheduler 기반 유지보수를 구현했다. 웹 단위 테스트 21개, 워커 테스트 32개 통과·2개 TODO, 전체 타입 검사와 빌드가 통과했다. Redis가 없는 로컬 standalone에서 상태 API의 부분 200, 업로드·상태·파일·취소 API의 JSON 503, SSE의 복구 가능 `failed` 이벤트 원문을 확인했다. Docker CLI가 없어 worker 중단/복구 통합 시나리오, 90초 unhealthy 전환, 실제 Audiveris 프로세스 종료, 스케줄러 단일성의 컨테이너 검증은 미실행이다.

@@ -3,13 +3,15 @@ import { getJobEventHub, type JobQueueEvent } from "@/lib/job-event-hub";
 import { getJobStatus, type JobStatus } from "@/lib/jobs";
 import { isSafeJobId } from "@/lib/paths";
 import type { ConversionFile, ConversionProgress, ConversionWarning } from "@/lib/queue";
+import { STATUS_QUERY_TIMEOUT_MS } from "@/lib/system-status";
+import { withTimeout } from "@/lib/timeouts";
 
 export const runtime = "nodejs";
 
 const encoder = new TextEncoder();
 const SERVICE_UNAVAILABLE = {
   code: "SERVICE_UNAVAILABLE",
-  message: "작업 상태 서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.",
+  message: errorMessage("SERVICE_UNAVAILABLE"),
   recoverable: true,
 };
 
@@ -102,7 +104,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       };
 
       const refreshStatus = async (forceActive = false) => {
-        const status = await getJobStatus(id);
+        const status = await withTimeout(() => getJobStatus(id), STATUS_QUERY_TIMEOUT_MS);
         if (closed) {
           return;
         }
@@ -170,7 +172,12 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       }
 
       request.signal.addEventListener("abort", close, { once: true });
-      unsubscribe = getJobEventHub().subscribe(id, scheduleQueueEvent);
+      try {
+        unsubscribe = getJobEventHub().subscribe(id, scheduleQueueEvent);
+      } catch {
+        failConnection();
+        return;
+      }
       refreshTimer = setInterval(() => {
         if (currentState === "queued") {
           eventChain = eventChain.then(() => refreshStatus()).catch(failConnection);
@@ -181,7 +188,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
 
       void (async () => {
         try {
-          const status = await getJobStatus(id);
+          const status = await withTimeout(() => getJobStatus(id), STATUS_QUERY_TIMEOUT_MS);
           if (closed) {
             return;
           }

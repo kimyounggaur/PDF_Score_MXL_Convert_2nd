@@ -51,6 +51,8 @@ export function getRedisConnectionOptions({ blocking = false }: { blocking?: boo
     // HTTP queue commands must fail promptly. QueueEvents uses a blocking
     // connection and therefore requires unlimited retries.
     maxRetriesPerRequest: blocking ? null : 1,
+    connectTimeout: 1_000,
+    commandTimeout: blocking ? undefined : 1_000,
     enableReadyCheck: false,
   };
 }

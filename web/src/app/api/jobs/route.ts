@@ -8,53 +8,78 @@ import { inputPdfPath, jobDir, metadataPath } from "@/lib/paths";
 import { validatePdf } from "@/lib/pdf";
 import { getConversionQueue } from "@/lib/queue";
 import { checkUploadRateLimit, checkValidationRateLimit, releaseUploadRateLimit, requestIp } from "@/lib/rate-limit";
+import { getDiskFreeBytes, MINIMUM_DISK_FREE_BYTES, STATUS_QUERY_TIMEOUT_MS } from "@/lib/system-status";
+import { withTimeout } from "@/lib/timeouts";
 
 export const runtime = "nodejs";
 
 export async function POST(request: NextRequest) {
   const ip = requestIp(request);
-  const validationRateLimit = await checkValidationRateLimit(ip);
-  if (!validationRateLimit.ok) {
-    return jsonError("RATE_LIMITED", 429);
-  }
-
-  const contentLength = Number(request.headers.get("content-length") ?? 0);
-  if (contentLength > MAX_UPLOAD_BYTES) {
-    return jsonError("FILE_TOO_LARGE", 413);
-  }
-
-  const formData = await request.formData();
-  const file = formData.get("file");
-
-  if (!(file instanceof File)) {
-    return jsonError("MISSING_FILE");
-  }
-
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  const validation = await validatePdf(bytes);
-
-  if (!validation.ok) {
-    return jsonError(validation.code, validation.status ?? 400);
-  }
-
-  const queue = getConversionQueue();
-  const counts = await queue.getJobCounts("waiting", "active");
-  if ((counts.waiting ?? 0) + (counts.active ?? 0) >= 20) {
-    return jsonError("QUEUE_FULL", 429);
-  }
-
-  // Reserve the strict upload quota only after validation. If registration
-  // fails, the reservation is returned in the finally block below.
-  const uploadRateLimit = await checkUploadRateLimit(ip);
-  if (!uploadRateLimit.ok) {
-    return jsonError("RATE_LIMITED", 429);
-  }
-
-  const jobId = uuidv4();
-  const dir = jobDir(jobId);
+  let dir: string | null = null;
   let registered = false;
+  let registrationMayHaveSucceeded = false;
+  let uploadQuotaConsumed = false;
 
   try {
+    const validationRateLimit = await withTimeout(
+      () => checkValidationRateLimit(ip),
+      STATUS_QUERY_TIMEOUT_MS,
+    );
+    if (!validationRateLimit.ok) {
+      return jsonError("RATE_LIMITED", 429);
+    }
+
+    const contentLength = Number(request.headers.get("content-length") ?? 0);
+    if (contentLength > MAX_UPLOAD_BYTES) {
+      return jsonError("FILE_TOO_LARGE", 413);
+    }
+
+    const formData = await request.formData();
+    const file = formData.get("file");
+
+    if (!(file instanceof File)) {
+      return jsonError("MISSING_FILE");
+    }
+
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const validation = await validatePdf(bytes);
+
+    if (!validation.ok) {
+      return jsonError(validation.code, validation.status ?? 400);
+    }
+
+    const queue = getConversionQueue();
+    const [workers, counts, diskFreeBytes] = await Promise.all([
+      withTimeout(() => queue.getWorkersCount(), STATUS_QUERY_TIMEOUT_MS),
+      withTimeout(() => queue.getJobCounts("waiting", "active"), STATUS_QUERY_TIMEOUT_MS),
+      getDiskFreeBytes(),
+    ]);
+
+    if (workers < 1) {
+      return jsonError("WORKER_UNAVAILABLE", 503);
+    }
+
+    if (diskFreeBytes < MINIMUM_DISK_FREE_BYTES) {
+      return jsonError("STORAGE_FULL", 503);
+    }
+
+    if ((counts.waiting ?? 0) + (counts.active ?? 0) >= 20) {
+      return jsonError("QUEUE_FULL", 429);
+    }
+
+    // Reserve the strict upload quota only after validation. If registration
+    // fails, the reservation is returned in the catch block below.
+    const uploadRateLimit = await withTimeout(
+      () => checkUploadRateLimit(ip),
+      STATUS_QUERY_TIMEOUT_MS,
+    );
+    if (!uploadRateLimit.ok) {
+      return jsonError("RATE_LIMITED", 429);
+    }
+    uploadQuotaConsumed = uploadRateLimit.consumed;
+
+    const jobId = uuidv4();
+    dir = jobDir(jobId);
     await mkdir(dir, { recursive: true });
     await writeFile(inputPdfPath(jobId), bytes);
     await writeFile(
@@ -72,22 +97,28 @@ export async function POST(request: NextRequest) {
     );
 
     try {
-      await queue.add(
-        "convert",
-        { jobId },
-        {
-          jobId,
-          attempts: 1,
-          removeOnComplete: { age: 86_400 },
-          removeOnFail: { age: 86_400 },
-        },
+      registrationMayHaveSucceeded = true;
+      await withTimeout(
+        () =>
+          queue.add(
+            "convert",
+            { jobId },
+            {
+              jobId,
+              attempts: 1,
+              removeOnComplete: { age: 86_400 },
+              removeOnFail: { age: 86_400 },
+            },
+          ),
+        STATUS_QUERY_TIMEOUT_MS,
       );
       registered = true;
     } catch (error) {
       // A Redis reply can be lost after the command itself succeeded. Confirm
       // the deterministic job ID before deleting its files or refunding quota.
-      const existingJob = await queue.getJob(jobId).catch(() => null);
+      const existingJob = await withTimeout(() => queue.getJob(jobId), STATUS_QUERY_TIMEOUT_MS);
       if (!existingJob) {
+        registrationMayHaveSucceeded = false;
         throw error;
       }
       registered = true;
@@ -95,11 +126,22 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ jobId }, { status: 201 });
   } catch (error) {
-    await rm(dir, { recursive: true, force: true }).catch(() => undefined);
-    throw error;
-  } finally {
-    if (!registered && uploadRateLimit.consumed) {
+    if (dir && !registered && !registrationMayHaveSucceeded) {
+      await rm(dir, { recursive: true, force: true }).catch(() => undefined);
+    }
+    if (uploadQuotaConsumed && !registered && !registrationMayHaveSucceeded) {
       await releaseUploadRateLimit(ip).catch(() => undefined);
     }
+
+    return jsonError(isStorageCapacityError(error) ? "STORAGE_FULL" : "SERVICE_UNAVAILABLE", 503);
   }
+}
+
+function isStorageCapacityError(error: unknown) {
+  if (typeof error !== "object" || error === null || !("code" in error)) {
+    return false;
+  }
+
+  const code = (error as { code?: unknown }).code;
+  return code === "ENOSPC" || code === "EDQUOT";
 }

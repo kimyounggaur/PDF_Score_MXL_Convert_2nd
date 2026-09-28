@@ -22,6 +22,7 @@ import { validateMxl } from "./validate-mxl.js";
 const ENGINE_TAIL_LINES = 30;
 
 type EngineRunResult = {
+  cancelled: boolean;
   timedOut: boolean;
   exitCode: number | null;
   signal: NodeJS.Signals | null;
@@ -36,7 +37,10 @@ type InspectedOutputs = {
   invalidReasons: string[];
 };
 
-export async function runAudiverisConversion(job: Job<ConversionJobData>): Promise<ConversionResult> {
+export async function runAudiverisConversion(
+  job: Job<ConversionJobData>,
+  signal?: AbortSignal,
+): Promise<ConversionResult> {
   const startedAt = Date.now();
   const deadline = startedAt + getConversionTimeoutMs();
   const jobId = job.data.jobId;
@@ -82,11 +86,14 @@ export async function runAudiverisConversion(job: Job<ConversionJobData>): Promi
       timeoutMs: remainingTime(deadline),
       engineLog,
       consumeLine,
+      signal,
     });
 
     initialTargetSheets = progressTracker.getTargetSheets();
     initialTotalSheets = progressTracker.getTotalSheets();
+    throwIfCancelled(signal, lastRun, progressTracker, engineTail, initialTotalSheets, initialTargetSheets);
     let outputs = await inspectOutputs(outDir);
+    throwIfCancelled(signal, lastRun, progressTracker, engineTail, initialTotalSheets, initialTargetSheets);
     let classification = classifyConversion({
       timedOut: lastRun.timedOut,
       outputCount: outputs.outputCount,
@@ -120,8 +127,11 @@ export async function runAudiverisConversion(job: Job<ConversionJobData>): Promi
           timeoutMs,
           engineLog,
           consumeLine,
+          signal,
         });
+        throwIfCancelled(signal, lastRun, progressTracker, engineTail, initialTotalSheets, initialTargetSheets);
         outputs = await inspectOutputs(outDir);
+        throwIfCancelled(signal, lastRun, progressTracker, engineTail, initialTotalSheets, initialTargetSheets);
         classification = classifyConversion({
           timedOut: lastRun.timedOut,
           outputCount: outputs.outputCount,
@@ -171,6 +181,7 @@ export async function runAudiverisConversion(job: Job<ConversionJobData>): Promi
     }
 
     await progressPublisher.flush();
+    throwIfCancelled(signal, lastRun, progressTracker, engineTail, initialTotalSheets, initialTargetSheets);
     const sheet = progressTracker.getProgress().sheet;
     await job.updateProgress({ pct: 98, stage: "collecting", sheet });
 
@@ -181,6 +192,7 @@ export async function runAudiverisConversion(job: Job<ConversionJobData>): Promi
     const recovered = recoveryAttempted;
 
     await job.updateProgress({ pct: 100, stage: "completed", sheet });
+    throwIfCancelled(signal, lastRun, progressTracker, engineTail, initialTotalSheets, initialTargetSheets);
     return {
       files: outputs.files,
       durationMs: Date.now() - startedAt,
@@ -244,7 +256,12 @@ async function runEngineProcess(options: {
   timeoutMs: number;
   engineLog: WriteStream;
   consumeLine: (collector: EngineSignalCollector, line: string) => void;
+  signal?: AbortSignal;
 }): Promise<EngineRunResult> {
+  if (options.signal?.aborted) {
+    return { ...emptyRunResult(), cancelled: true };
+  }
+
   if (options.timeoutMs <= 0) {
     return { ...emptyRunResult(), timedOut: true };
   }
@@ -257,7 +274,7 @@ async function runEngineProcess(options: {
       detached: true,
       env: {
         ...process.env,
-        JAVA_OPTS: process.env.JAVA_OPTS ?? "-Xmx4g -Djava.awt.headless=true",
+        JAVA_TOOL_OPTIONS: process.env.JAVA_TOOL_OPTIONS ?? "-Xmx4g -Djava.awt.headless=true",
       },
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -273,6 +290,7 @@ async function runEngineProcess(options: {
   const stderrLines = new LineBuffer((line) => options.consumeLine(collector, line));
   let settled = false;
   let timedOut = false;
+  let cancelled = false;
 
   child.stdout?.setEncoding("utf8");
   child.stderr?.setEncoding("utf8");
@@ -287,16 +305,26 @@ async function runEngineProcess(options: {
       killProcessGroup(child.pid);
     }, options.timeoutMs);
 
-    const finish = (result: Omit<EngineRunResult, "signals">) => {
+    const abort = () => {
+      if (cancelled) {
+        return;
+      }
+
+      cancelled = true;
+      killProcessGroup(child.pid);
+    };
+
+    const finish = (result: Omit<EngineRunResult, "signals" | "cancelled">) => {
       if (settled) {
         return;
       }
 
       settled = true;
       clearTimeout(timeout);
+      options.signal?.removeEventListener("abort", abort);
       stdoutLines.flush();
       stderrLines.flush();
-      resolve({ ...result, signals: collector.getSignals() });
+      resolve({ ...result, cancelled, signals: collector.getSignals() });
     };
 
     child.once("error", (error) => {
@@ -316,6 +344,13 @@ async function runEngineProcess(options: {
         spawnError: null,
       });
     });
+
+    options.signal?.addEventListener("abort", abort, { once: true });
+    // Close the small race between the pre-spawn check and listener setup.
+    // Process listeners are already installed so a very fast exit is observed.
+    if (options.signal?.aborted) {
+      abort();
+    }
   });
 }
 
@@ -404,12 +439,39 @@ function remainingTime(deadline: number) {
 
 function emptyRunResult(): EngineRunResult {
   return {
+    cancelled: false,
     timedOut: false,
     exitCode: null,
     signal: null,
     spawnError: null,
     signals: { outOfMemory: false, noOutput: false },
   };
+}
+
+function throwIfCancelled(
+  signal: AbortSignal | undefined,
+  run: EngineRunResult,
+  progressTracker: AudiverisProgressTracker,
+  engineTail: string[],
+  totalSheets: number | null,
+  targetSheets: number[],
+) {
+  if (!run.cancelled && !signal?.aborted) {
+    return;
+  }
+
+  throw new ConversionError(
+    "CANCELLED",
+    undefined,
+    diagnostics({
+      progressTracker,
+      engineTail,
+      run,
+      totalSheets,
+      targetSheets,
+      recovered: false,
+    }),
+  );
 }
 
 function formatSpawnError(error: unknown) {

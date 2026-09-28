@@ -6,6 +6,7 @@ import { useDropzone } from "react-dropzone";
 import type { StoredJob } from "@/lib/client-types";
 import { deserializeStoredJobs, pruneStoredJobs, serializeStoredJobs, STORED_JOBS_KEY } from "@/lib/job-storage";
 import { cn } from "@/lib/ui";
+import { useServiceStatus } from "@/hooks/use-service-status";
 import { Alert } from "./ui/alert";
 import { Button } from "./ui/button";
 import { Card, CardContent } from "./ui/card";
@@ -16,6 +17,7 @@ export function UploadApp() {
   const [message, setMessage] = useState<{ tone: "info" | "warning" | "error"; text: string } | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isHydrated, setIsHydrated] = useState(false);
+  const { status: serviceStatus, isChecking: isCheckingService, isUnavailable, canUpload } = useServiceStatus();
 
   useEffect(() => {
     try {
@@ -73,17 +75,22 @@ export function UploadApp() {
 
   const onDrop = useCallback(
     (acceptedFiles: File[]) => {
+      if (!canUpload) {
+        return;
+      }
+
       const [file] = acceptedFiles;
       if (file) {
         void uploadFile(file);
       }
     },
-    [uploadFile],
+    [canUpload, uploadFile],
   );
 
   const { getRootProps, getInputProps, isDragActive, open } = useDropzone({
     onDrop,
     noClick: true,
+    disabled: isUploading || !canUpload,
     multiple: false,
     maxSize: 30 * 1024 * 1024,
     accept: {
@@ -110,6 +117,12 @@ export function UploadApp() {
   return (
     <main className="min-h-screen bg-slate-50">
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-8 px-5 py-8 sm:px-8 lg:py-12">
+        {isUnavailable ? (
+          <Alert tone="warning" role="status" aria-live="polite" data-testid="service-status-banner">
+            변환 서버를 점검하고 있습니다. 잠시 후 다시 시도해 주세요.
+          </Alert>
+        ) : null}
+
         <header className="flex flex-col gap-4 border-b border-slate-200 pb-6 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <div className="flex items-center gap-2 text-sm font-semibold text-teal-700">
@@ -133,6 +146,7 @@ export function UploadApp() {
                 className={cn(
                   "flex min-h-64 flex-col items-center justify-center rounded-lg border-2 border-dashed px-6 py-10 text-center transition-colors",
                   isDragActive ? "border-teal-600 bg-teal-50" : "border-slate-300 bg-white",
+                  !canUpload && "cursor-not-allowed opacity-70",
                 )}
               >
                 <input {...getInputProps()} />
@@ -143,9 +157,9 @@ export function UploadApp() {
                   {isDragActive ? "여기에 놓으면 업로드합니다" : "PDF 악보를 끌어다 놓으세요"}
                 </p>
                 <p className="mt-2 text-sm text-slate-500">최대 30MB, 20쪽</p>
-                <Button className="mt-6" onClick={open} disabled={isUploading}>
+                <Button className="mt-6" onClick={open} disabled={isUploading || !canUpload}>
                   <FileUp className="h-4 w-4" aria-hidden="true" />
-                  PDF 선택
+                  {isCheckingService && !serviceStatus ? "서버 확인 중" : "PDF 선택"}
                 </Button>
               </div>
             </CardContent>
@@ -199,7 +213,7 @@ export function UploadApp() {
         </section>
 
         <footer className="border-t border-slate-200 pt-5 text-sm text-slate-500">
-          OMR 엔진: Audiveris 5.10.2 (AGPL-3.0) -{" "}
+          OMR 엔진: Audiveris {serviceStatus?.engineVersion ?? "확인 중"} (AGPL-3.0) -{" "}
           <a className="font-medium text-teal-700 underline-offset-4 hover:underline" href="https://github.com/Audiveris/audiveris" target="_blank" rel="noreferrer">
             소스 코드
           </a>

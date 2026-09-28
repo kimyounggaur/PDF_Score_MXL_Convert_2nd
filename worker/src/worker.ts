@@ -1,62 +1,54 @@
 import { Worker } from "bullmq";
-import { QUEUE_NAME } from "./config.js";
+import { Redis } from "ioredis";
+import { QUEUE_NAME, getRedisUrl } from "./config.js";
 import { getRedisConnectionOptions } from "./queue.js";
-import { runAudiverisConversion } from "./audiveris.js";
-import { ConversionError, type ConversionJobData } from "./types.js";
+import { startWorkerHeartbeat } from "./control.js";
+import { createConversionProcessor } from "./processor.js";
+import type { ConversionJobData, ConversionResult } from "./types.js";
 import { startMaintenance } from "./maintenance.js";
 
 const maintenance = startMaintenance();
+const controlRedis = new Redis(getRedisUrl(), {
+  connectTimeout: 1_000,
+  commandTimeout: 1_000,
+  enableOfflineQueue: false,
+  enableReadyCheck: false,
+  maxRetriesPerRequest: 1,
+});
+controlRedis.on("error", (error) => {
+  console.log(JSON.stringify({ level: "warn", event: "control_redis_error", message: error.message }));
+});
 
-const worker = new Worker<ConversionJobData>(
-  QUEUE_NAME,
-  async (job) => {
-    const startedAt = Date.now();
-    console.log(JSON.stringify({ level: "info", event: "job_started", jobId: job.data.jobId }));
-
-    try {
-      const result = await runAudiverisConversion(job);
-      console.log(
-        JSON.stringify({
-          level: "info",
-          event: "job_completed",
-          jobId: job.data.jobId,
-          code: "SUCCESS",
-          durationMs: result.durationMs,
-          fileCount: result.files.length,
-          pages: result.totalSheets,
-          targetSheets: result.targetSheets,
-          invalidSheets: result.invalidSheets,
-          recovered: result.recovered,
-        }),
-      );
-      return result;
-    } catch (error) {
-      const code = error instanceof ConversionError ? error.code : "ENGINE_ERROR";
-      const diagnostics = error instanceof ConversionError ? error.diagnostics : undefined;
-      console.log(
-        JSON.stringify({
-          level: "error",
-          event: "job_failed",
-          jobId: job.data.jobId,
-          durationMs: Date.now() - startedAt,
-          code,
-          message: error instanceof Error ? error.message : String(error),
-          details: error instanceof ConversionError ? error.details : undefined,
-          pages: diagnostics?.totalSheets ?? null,
-          targetSheets: diagnostics?.targetSheets ?? [],
-          invalidSheets: diagnostics?.invalidSheets ?? [],
-          recovered: diagnostics?.recovered ?? false,
-          engineTail: diagnostics?.engineTail ?? [],
-        }),
-      );
-      throw error;
-    }
+let worker!: Worker<ConversionJobData, ConversionResult, "convert">;
+const processor = createConversionProcessor({
+  redis: controlRedis,
+  cancelJob(jobId, reason) {
+    return worker.cancelJob(jobId, reason);
   },
+});
+
+worker = new Worker<ConversionJobData, ConversionResult, "convert">(
+  QUEUE_NAME,
+  processor,
   {
     connection: getRedisConnectionOptions(),
     concurrency: 1,
   },
 );
+
+const heartbeat = startWorkerHeartbeat({
+  redis: controlRedis,
+  disabled: process.env.HEARTBEAT_DISABLED === "1",
+  onError: (error) => {
+    console.log(
+      JSON.stringify({
+        level: "warn",
+        event: "heartbeat_failed",
+        message: error instanceof Error ? error.message : String(error),
+      }),
+    );
+  },
+});
 
 worker.on("ready", () => {
   console.log(JSON.stringify({ level: "info", event: "worker_ready", queue: QUEUE_NAME }));
@@ -73,10 +65,25 @@ worker.on("failed", (job, error) => {
   );
 });
 
+worker.on("error", (error) => {
+  console.log(JSON.stringify({ level: "error", event: "worker_error", message: error.message }));
+});
+
+let shutdownPromise: Promise<void> | null = null;
 const shutdown = async () => {
-  console.log(JSON.stringify({ level: "info", event: "worker_shutdown" }));
-  await maintenance.close();
-  await worker.close();
+  if (shutdownPromise) {
+    return shutdownPromise;
+  }
+
+  shutdownPromise = (async () => {
+    console.log(JSON.stringify({ level: "info", event: "worker_shutdown" }));
+    await heartbeat.stop();
+    await maintenance.close();
+    await worker.close();
+    controlRedis.disconnect();
+  })();
+
+  return shutdownPromise;
 };
 
 process.on("SIGINT", () => {

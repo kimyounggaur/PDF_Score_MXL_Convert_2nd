@@ -9,6 +9,11 @@ export type ErrorCode =
   | "FILE_NOT_FOUND"
   | "QUEUE_FULL"
   | "RATE_LIMITED"
+  | "SERVICE_UNAVAILABLE"
+  | "WORKER_UNAVAILABLE"
+  | "STORAGE_FULL"
+  | "JOB_ALREADY_FINISHED"
+  | "CANCELLED"
   | "TIMEOUT"
   | "NO_OUTPUT"
   | "OUT_OF_MEMORY"
@@ -26,6 +31,11 @@ const MESSAGES: Record<ErrorCode, string> = {
   FILE_NOT_FOUND: "요청한 결과 파일을 찾을 수 없습니다.",
   QUEUE_FULL: "현재 대기열이 가득 찼습니다. 잠시 후 다시 시도해 주세요.",
   RATE_LIMITED: "요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.",
+  SERVICE_UNAVAILABLE: "변환 서비스에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.",
+  WORKER_UNAVAILABLE: "변환 서버를 점검하고 있습니다. 잠시 후 다시 시도해 주세요.",
+  STORAGE_FULL: "서버 저장 공간이 부족합니다. 잠시 후 다시 시도해 주세요.",
+  JOB_ALREADY_FINISHED: "이미 완료되었거나 실패한 작업은 취소할 수 없습니다.",
+  CANCELLED: "변환을 취소했습니다.",
   TIMEOUT: "변환 시간이 20분을 초과했습니다. 페이지 수가 적은 파일로 나눠서 시도해 보세요.",
   NO_OUTPUT: "악보를 인식하지 못했습니다. 표지만 있거나 악보가 아닌 PDF일 수 있습니다. 300DPI 이상의 선명한 인쇄 악보인지 확인해 주세요.",
   OUT_OF_MEMORY: "악보가 너무 크거나 복잡해 메모리가 부족했습니다. 쪽을 나눠서 다시 시도해 주세요.",
@@ -60,6 +70,10 @@ export function normalizeFailureCode(value: unknown): ErrorCode {
 
   if (value.includes("INVALID_OUTPUT")) {
     return "INVALID_OUTPUT";
+  }
+
+  if (value.includes("CANCELLED")) {
+    return "CANCELLED";
   }
 
   return "ENGINE_ERROR";

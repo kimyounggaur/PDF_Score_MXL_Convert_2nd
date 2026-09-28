@@ -1,6 +1,6 @@
 "use client";
 
-import { Download, FileMusic, RefreshCw, XCircle } from "lucide-react";
+import { Download, FileMusic, Loader2, RefreshCw, XCircle } from "lucide-react";
 import { useState } from "react";
 import type { JobStatus, StoredJob } from "@/lib/client-types";
 import { formatBytes, progressLabel, resultFileLabel, skippedPagesLabel } from "@/lib/ui";
@@ -14,11 +14,45 @@ import { Progress } from "./ui/progress";
 
 export function JobCard({ job, onRemove }: { job: StoredJob; onRemove: (jobId: string) => void }) {
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [cancelState, setCancelState] = useState<"idle" | "requesting" | "pending">("idle");
+  const [cancelError, setCancelError] = useState<string | null>(null);
   const { status, isLoading, isExpired, error } = useJobStatus(job.jobId);
   const state: JobViewState = isExpired ? "expired" : (status?.status ?? "queued");
   const progress = status?.progress?.pct ?? 0;
   const activeProgressLabel = progressLabel(status?.progress ?? { stage: "starting", sheet: null });
-  const badge = badgeForState(state, isLoading, status?.queuePosition ?? null);
+  const isCancelled = state === "failed" && status?.error?.code === "CANCELLED";
+  const isCancellable = status?.status === "queued" || status?.status === "active";
+  const badge = badgeForState(state, isLoading, status?.queuePosition ?? null, cancelState, isCancelled);
+
+  const cancelJob = async () => {
+    if (cancelState !== "idle" || !isCancellable || !window.confirm("이 변환 작업을 취소할까요?")) {
+      return;
+    }
+
+    setCancelState("requesting");
+    setCancelError(null);
+
+    try {
+      const response = await fetch(`/api/jobs/${job.jobId}`, { method: "DELETE" });
+      const data: unknown = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        setCancelError(readApiErrorMessage(data) ?? "작업을 취소하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+        setCancelState("idle");
+        return;
+      }
+
+      if (response.status === 202) {
+        setCancelState("pending");
+        return;
+      }
+
+      onRemove(job.jobId);
+    } catch {
+      setCancelError("작업을 취소하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+      setCancelState("idle");
+    }
+  };
 
   return (
     <Card className={isExpired ? "border-slate-200 bg-slate-100 shadow-none" : undefined} data-testid="job-card">
@@ -34,7 +68,18 @@ export function JobCard({ job, onRemove }: { job: StoredJob; onRemove: (jobId: s
           <Badge tone={badge.tone} data-testid="job-status">
             {badge.label}
           </Badge>
-          {!isExpired ? (
+          {isCancellable ? (
+            <Button
+              variant="danger"
+              size="sm"
+              onClick={() => void cancelJob()}
+              disabled={cancelState !== "idle"}
+              data-testid="cancel-job"
+            >
+              {cancelState === "requesting" ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
+              {cancelState === "idle" ? "취소" : "취소 중"}
+            </Button>
+          ) : !isExpired ? (
             <Button variant="ghost" size="sm" onClick={() => onRemove(job.jobId)} aria-label="작업 카드 제거">
               <XCircle className="h-4 w-4" aria-hidden="true" />
             </Button>
@@ -54,6 +99,18 @@ export function JobCard({ job, onRemove }: { job: StoredJob; onRemove: (jobId: s
             {error ? (
               <Alert tone="error" data-testid="job-error">
                 {error}
+              </Alert>
+            ) : null}
+
+            {cancelError ? (
+              <Alert tone="error" role="alert" data-testid="cancel-error">
+                {cancelError}
+              </Alert>
+            ) : null}
+
+            {cancelState === "pending" && state === "active" ? (
+              <Alert tone="info" role="status" aria-live="polite">
+                취소 요청을 처리하고 있습니다. 실행 중인 변환을 안전하게 종료하는 중입니다.
               </Alert>
             ) : null}
 
@@ -131,7 +188,17 @@ function badgeForState(
   state: JobViewState,
   isLoading: boolean,
   queuePosition: number | null,
+  cancelState: "idle" | "requesting" | "pending",
+  isCancelled: boolean,
 ): { label: string; tone: "slate" | "blue" | "teal" | "rose" | "amber" } {
+  if (isCancelled) {
+    return { label: "취소됨", tone: "slate" };
+  }
+
+  if (cancelState !== "idle" && (state === "queued" || state === "active")) {
+    return { label: "취소 중", tone: "slate" };
+  }
+
   if (isLoading) {
     return { label: "확인 중", tone: "slate" };
   }
@@ -156,4 +223,18 @@ function badgeForState(
     label: queuePosition && queuePosition > 0 ? `대기 중 · ${queuePosition}번째 순서` : "대기 중",
     tone: "amber",
   };
+}
+
+function readApiErrorMessage(value: unknown) {
+  if (typeof value !== "object" || value === null || !("error" in value)) {
+    return null;
+  }
+
+  const error = (value as { error?: unknown }).error;
+  if (typeof error !== "object" || error === null || !("message" in error)) {
+    return null;
+  }
+
+  const message = (error as { message?: unknown }).message;
+  return typeof message === "string" ? message : null;
 }

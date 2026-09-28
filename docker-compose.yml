@@ -17,10 +17,13 @@ services:
       context: .
       dockerfile: worker/Dockerfile
       target: worker
+      args:
+        AUDIVERIS_VERSION: "${AUDIVERIS_VERSION:-5.10.2}"
     environment:
       REDIS_URL: redis://redis:6379
       DATA_DIR: /data
       AUDIVERIS_BIN: /opt/audiveris/bin/Audiveris
+      AUDIVERIS_VERSION: "${AUDIVERIS_VERSION:-5.10.2}"
       CONVERSION_TIMEOUT_MS: "1200000"
       JAVA_TOOL_OPTIONS: "-Xmx4g -Djava.awt.headless=true"
     volumes:
@@ -42,7 +45,7 @@ services:
     networks:
       - worker_internal
     healthcheck:
-      test: ["CMD", "node", "-e", "process.exit(0)"]
+      test: ["CMD", "node", "-e", "const fs=require('node:fs');try{process.exit(Date.now()-fs.statSync('/tmp/worker-heartbeat').mtimeMs<=90000?0:1)}catch{process.exit(1)}"]
       interval: 30s
       timeout: 3s
       retries: 3
@@ -57,6 +60,7 @@ services:
       DATA_DIR: /data
       NODE_ENV: development
       NEXT_TELEMETRY_DISABLED: "1"
+      AUDIVERIS_VERSION: "${AUDIVERIS_VERSION:-5.10.2}"
     volumes:
       - ./data:/data
     depends_on:

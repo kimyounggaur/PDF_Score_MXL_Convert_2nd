@@ -31,3 +31,12 @@ export type StoredJob = {
   createdAt: string;
 };
 
+export type ServiceStatus = {
+  redis: "ok" | "down";
+  workers: number | null;
+  waiting: number | null;
+  active: number | null;
+  diskFreeBytes: number | null;
+  engineVersion: string;
+};
+
