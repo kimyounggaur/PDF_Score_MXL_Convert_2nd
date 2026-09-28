@@ -31,10 +31,14 @@ export type ConversionResult = {
 
 type ConversionQueue = Queue<ConversionJobData, ConversionResult, "convert">;
 
-let queue: ConversionQueue | null = null;
-let queueEvents: QueueEvents | null = null;
+type QueueGlobals = typeof globalThis & {
+  __pdfScoreConversionQueue?: ConversionQueue;
+  __pdfScoreConversionQueueEvents?: QueueEvents;
+};
 
-export function getRedisConnectionOptions(): ConnectionOptions {
+const queueGlobals = globalThis as QueueGlobals;
+
+export function getRedisConnectionOptions({ blocking = false }: { blocking?: boolean } = {}): ConnectionOptions {
   const redisUrl = new URL(getRedisUrl());
   const db = redisUrl.pathname ? Number(redisUrl.pathname.slice(1)) : 0;
 
@@ -44,14 +48,16 @@ export function getRedisConnectionOptions(): ConnectionOptions {
     username: redisUrl.username || undefined,
     password: redisUrl.password || undefined,
     db: Number.isFinite(db) ? db : 0,
-    maxRetriesPerRequest: null,
+    // HTTP queue commands must fail promptly. QueueEvents uses a blocking
+    // connection and therefore requires unlimited retries.
+    maxRetriesPerRequest: blocking ? null : 1,
     enableReadyCheck: false,
   };
 }
 
 export function getConversionQueue() {
-  if (!queue) {
-    queue = new Queue<ConversionJobData, ConversionResult, "convert">(QUEUE_NAME, {
+  if (!queueGlobals.__pdfScoreConversionQueue) {
+    const queue = new Queue<ConversionJobData, ConversionResult, "convert">(QUEUE_NAME, {
       connection: getRedisConnectionOptions(),
       defaultJobOptions: {
         attempts: 1,
@@ -59,19 +65,23 @@ export function getConversionQueue() {
         removeOnFail: { age: 86_400 },
       },
     });
+    // BullMQ commands still reject to their caller. This listener only keeps an
+    // EventEmitter "error" from becoming an uncaught process exception.
+    queue.on("error", () => undefined);
+    queueGlobals.__pdfScoreConversionQueue = queue;
   }
 
-  return queue;
+  return queueGlobals.__pdfScoreConversionQueue;
 }
 
 export function getConversionQueueEvents() {
-  if (!queueEvents) {
-    queueEvents = new QueueEvents(QUEUE_NAME, {
-      connection: getRedisConnectionOptions(),
+  if (!queueGlobals.__pdfScoreConversionQueueEvents) {
+    queueGlobals.__pdfScoreConversionQueueEvents = new QueueEvents(QUEUE_NAME, {
+      connection: getRedisConnectionOptions({ blocking: true }),
     });
   }
 
-  return queueEvents;
+  return queueGlobals.__pdfScoreConversionQueueEvents;
 }
 
 export async function getJob(jobId: string) {

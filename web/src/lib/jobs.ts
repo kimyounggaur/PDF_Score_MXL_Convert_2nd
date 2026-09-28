@@ -1,7 +1,7 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { errorMessage, normalizeFailureCode } from "./errors";
-import { getJob, type ConversionFile, type ConversionProgress, type ConversionResult, type ConversionWarning } from "./queue";
+import { getConversionQueue, getJob, type ConversionFile, type ConversionProgress, type ConversionResult, type ConversionWarning } from "./queue";
 import { metadataPath, outputDir } from "./paths";
 
 export type JobStatus = {
@@ -10,6 +10,7 @@ export type JobStatus = {
   files: ConversionFile[] | null;
   warnings: ConversionWarning[];
   error: { code: string; message: string } | null;
+  queuePosition: number | null;
 };
 
 export type JobMetadata = {
@@ -26,7 +27,7 @@ export async function getJobStatus(jobId: string): Promise<JobStatus | null> {
   }
 
   const state = await job.getState();
-  const progress = normalizeProgress(job.progress);
+  const progress = progressForJobState(state, job.progress);
 
   if (state === "completed") {
     const returnValue = job.returnvalue as ConversionResult | undefined;
@@ -36,6 +37,7 @@ export async function getJobStatus(jobId: string): Promise<JobStatus | null> {
       files: returnValue?.files ?? (await listOutputFiles(jobId)),
       warnings: returnValue?.warnings ?? [],
       error: null,
+      queuePosition: null,
     };
   }
 
@@ -50,8 +52,13 @@ export async function getJobStatus(jobId: string): Promise<JobStatus | null> {
         code,
         message: errorMessage(code),
       },
+      queuePosition: null,
     };
   }
+
+  const queuePosition = isQueuedState(state)
+    ? queuePositionFromWaitingJobs(jobId, await getConversionQueue().getWaiting(0, -1))
+    : null;
 
   return {
     status: mapState(state),
@@ -59,6 +66,7 @@ export async function getJobStatus(jobId: string): Promise<JobStatus | null> {
     files: null,
     warnings: [],
     error: null,
+    queuePosition,
   };
 }
 
@@ -95,6 +103,19 @@ export async function readJobMetadata(jobId: string): Promise<JobMetadata | null
   }
 }
 
+export function progressForJobState(state: string, progress: unknown): ConversionProgress | null {
+  if (isQueuedState(state)) {
+    return null;
+  }
+
+  return normalizeProgress(progress);
+}
+
+export function queuePositionFromWaitingJobs(jobId: string, jobs: ReadonlyArray<{ id?: string }>) {
+  const index = jobs.findIndex((job) => job.id === jobId);
+  return index >= 0 ? index + 1 : null;
+}
+
 function normalizeProgress(progress: unknown): ConversionProgress | null {
   if (typeof progress === "object" && progress !== null && "pct" in progress && "stage" in progress) {
     const value = progress as { pct: unknown; stage: unknown; sheet?: unknown };
@@ -110,6 +131,10 @@ function normalizeProgress(progress: unknown): ConversionProgress | null {
   }
 
   return null;
+}
+
+function isQueuedState(state: string) {
+  return state === "waiting" || state === "delayed" || state === "prioritized" || state === "waiting-children";
 }
 
 function normalizeSheet(value: unknown): { current: number; total: number } | null {

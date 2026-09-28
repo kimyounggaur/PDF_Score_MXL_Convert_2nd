@@ -3,153 +3,387 @@
 import { useEffect, useState } from "react";
 import type { JobFile, JobProgress, JobStatus, JobWarning } from "@/lib/client-types";
 
+const SSE_INACTIVITY_MS = 20_000;
+const POLL_INTERVAL_MS = 5_000;
+
+type DoneEventData = {
+  files: JobFile[];
+  warnings?: JobWarning[];
+};
+
+type FailedEventData = {
+  code: string;
+  message: string;
+  recoverable?: boolean;
+};
+
 export function useJobStatus(jobId: string) {
   const [status, setStatus] = useState<JobStatus | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isExpired, setIsExpired] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
-    let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
+    let disposed = false;
     let terminal = false;
+    let hasCanonicalStatus = false;
     let source: EventSource | null = null;
+    let inactivityTimer: ReturnType<typeof setTimeout> | null = null;
+    let pollTimer: ReturnType<typeof setTimeout> | null = null;
+    let polling = false;
+    let pollController: AbortController | null = null;
 
-    const clearFallback = () => {
-      if (fallbackTimer) {
-        clearTimeout(fallbackTimer);
-        fallbackTimer = null;
+    setStatus(null);
+    setIsLoading(true);
+    setIsExpired(false);
+    setError(null);
+
+    const clearInactivityTimer = () => {
+      if (inactivityTimer) {
+        clearTimeout(inactivityTimer);
+        inactivityTimer = null;
       }
     };
 
-    const syncOnce = async () => {
+    const clearPollTimer = () => {
+      if (pollTimer) {
+        clearTimeout(pollTimer);
+        pollTimer = null;
+      }
+    };
+
+    const stopPolling = () => {
+      polling = false;
+      clearPollTimer();
+      pollController?.abort();
+      pollController = null;
+    };
+
+    const finishTerminalState = () => {
+      terminal = true;
+      clearInactivityTimer();
+      stopPolling();
+      source?.close();
+    };
+
+    const applyStatus = (nextStatus: JobStatus) => {
+      const normalized = normalizeJobStatus(nextStatus);
+      hasCanonicalStatus = true;
+      setStatus(normalized);
+      setIsExpired(false);
+      setIsLoading(false);
+      setError(null);
+
+      if (isTerminal(normalized)) {
+        finishTerminalState();
+      }
+    };
+
+    const syncStatus = async () => {
+      const controller = new AbortController();
+      pollController = controller;
+
       try {
-        const response = await fetch(`/api/jobs/${jobId}`, { cache: "no-store" });
-        const data = await response.json();
+        const response = await fetch(`/api/jobs/${jobId}`, {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        const data: unknown = await response.json().catch(() => null);
 
-        if (cancelled) {
+        if (disposed || controller.signal.aborted || !polling) {
           return;
         }
 
-        if (!response.ok) {
-          setError(data?.error?.message ?? "작업 상태를 불러오지 못했습니다.");
+        if (response.status === 404) {
+          setStatus(null);
+          setIsExpired(true);
           setIsLoading(false);
+          setError(null);
+          finishTerminalState();
           return;
         }
 
-        setStatus(data as JobStatus);
-        setError(null);
-        setIsLoading(false);
-
-        if (data.status === "completed" || data.status === "failed") {
-          terminal = true;
-          source?.close();
+        if (!response.ok || !isJobStatus(data)) {
+          setIsLoading(!hasCanonicalStatus);
+          setError(readErrorMessage(data) ?? "작업 상태를 불러오지 못했습니다. 잠시 후 다시 확인합니다.");
+          return;
         }
-      } catch {
-        if (!cancelled) {
+
+        applyStatus(data);
+      } catch (caught) {
+        if (!disposed && polling && !isAbortError(caught)) {
+          setIsLoading(!hasCanonicalStatus);
           setError("작업 상태를 불러오지 못했습니다. 잠시 후 다시 확인합니다.");
         }
+      } finally {
+        if (pollController === controller) {
+          pollController = null;
+        }
       }
     };
 
-    const scheduleFallback = () => {
-      clearFallback();
-      fallbackTimer = setTimeout(() => {
-        void syncOnce();
-      }, 30_000);
+    const poll = async () => {
+      if (disposed || terminal || !polling) {
+        return;
+      }
+
+      await syncStatus();
+
+      if (!disposed && !terminal && polling) {
+        clearPollTimer();
+        pollTimer = setTimeout(() => {
+          void poll();
+        }, POLL_INTERVAL_MS);
+      }
+    };
+
+    const startPolling = (immediate = false) => {
+      if (disposed || terminal) {
+        return;
+      }
+
+      if (polling) {
+        if (immediate && !pollController) {
+          clearPollTimer();
+          void poll();
+        }
+        return;
+      }
+
+      polling = true;
+      clearPollTimer();
+
+      if (immediate) {
+        void poll();
+        return;
+      }
+
+      pollTimer = setTimeout(() => {
+        void poll();
+      }, POLL_INTERVAL_MS);
+    };
+
+    const scheduleInactivityCheck = () => {
+      clearInactivityTimer();
+
+      if (terminal || disposed) {
+        return;
+      }
+
+      inactivityTimer = setTimeout(() => {
+        startPolling(true);
+      }, SSE_INACTIVITY_MS);
+    };
+
+    const markSseDataReceived = () => {
+      stopPolling();
+      setError(null);
+      scheduleInactivityCheck();
+    };
+
+    const handleMalformedEvent = () => {
+      setIsLoading(!hasCanonicalStatus);
+      setError("실시간 상태를 읽지 못해 서버 상태를 다시 확인합니다.");
+      startPolling(true);
     };
 
     if (typeof EventSource === "undefined") {
-      const poll = async () => {
-        await syncOnce();
-        if (!cancelled && !terminal) {
-          fallbackTimer = setTimeout(poll, 2000);
-        }
-      };
-      void poll();
+      startPolling(true);
     } else {
       source = new EventSource(`/api/jobs/${jobId}/events`);
-      scheduleFallback();
+      scheduleInactivityCheck();
 
-      source.addEventListener("progress", (event) => {
-        if (cancelled) {
+      source.addEventListener("status", (event) => {
+        const data = parseEventData(event);
+        if (disposed || !isJobStatus(data)) {
+          if (!disposed) {
+            handleMalformedEvent();
+          }
           return;
         }
 
-        const progress = JSON.parse(event.data) as JobProgress;
-        clearFallback();
-        setStatus((current) => ({
-          status: current?.status === "queued" ? "queued" : "active",
-          progress,
-          files: null,
-          warnings: current?.warnings ?? [],
-          error: null,
-        }));
+        markSseDataReceived();
+        applyStatus(data);
+      });
+
+      source.addEventListener("progress", (event) => {
+        const data = parseEventData(event);
+        if (disposed || !isJobProgress(data)) {
+          if (!disposed) {
+            handleMalformedEvent();
+          }
+          return;
+        }
+
+        markSseDataReceived();
+
+        if (!hasCanonicalStatus) {
+          startPolling(true);
+          return;
+        }
+
+        setStatus((current) => (current ? { ...current, progress: normalizeJobProgress(data) } : current));
         setIsLoading(false);
-        setError(null);
-        scheduleFallback();
       });
 
       source.addEventListener("done", (event) => {
-        if (cancelled) {
+        const data = parseEventData(event);
+        if (disposed || !isDoneEventData(data)) {
+          if (!disposed) {
+            handleMalformedEvent();
+          }
           return;
         }
 
-        terminal = true;
-        clearFallback();
-        const data = JSON.parse(event.data) as { files: JobFile[]; warnings?: JobWarning[] };
-        setStatus({
+        markSseDataReceived();
+        hasCanonicalStatus = true;
+        setStatus((current) => ({
           status: "completed",
           progress: { pct: 100, stage: "completed", sheet: null },
+          queuePosition: null,
           files: data.files,
-          warnings: data.warnings ?? [],
+          warnings: data.warnings ?? current?.warnings ?? [],
           error: null,
-        });
+        }));
+        setIsExpired(false);
         setIsLoading(false);
         setError(null);
-        source?.close();
+        finishTerminalState();
       });
 
-      source.addEventListener("error", (event) => {
-        if (cancelled || terminal) {
+      source.addEventListener("failed", (event) => {
+        const data = parseEventData(event);
+        if (disposed || !isFailedEventData(data)) {
+          if (!disposed) {
+            handleMalformedEvent();
+          }
           return;
         }
 
-        if ("data" in event && typeof event.data === "string" && event.data) {
-          const data = JSON.parse(event.data) as { code: string; message: string };
-          terminal = true;
-          clearFallback();
-          setStatus({
-            status: "failed",
-            progress: null,
-            files: null,
-            warnings: [],
-            error: data,
-          });
-          setIsLoading(false);
-          setError(null);
-          source?.close();
+        markSseDataReceived();
+
+        if (data.recoverable) {
+          setIsLoading(!hasCanonicalStatus);
+          setError(data.message);
+          startPolling(true);
           return;
         }
 
-        setError("실시간 연결이 끊겼습니다. 상태를 다시 확인하는 중입니다.");
-        void syncOnce();
-        scheduleFallback();
+        hasCanonicalStatus = true;
+        setStatus((current) => ({
+          status: "failed",
+          progress: current?.progress ?? null,
+          queuePosition: null,
+          files: null,
+          warnings: current?.warnings ?? [],
+          error: { code: data.code, message: data.message },
+        }));
+        setIsExpired(false);
+        setIsLoading(false);
+        setError(null);
+        finishTerminalState();
       });
 
       source.onerror = () => {
-        if (!terminal && !cancelled) {
-          setError("실시간 연결을 다시 시도하고 있습니다.");
-          scheduleFallback();
+        if (disposed || terminal) {
+          return;
         }
+
+        clearInactivityTimer();
+        setIsLoading(!hasCanonicalStatus);
+        setError("실시간 연결이 끊겼습니다. 서버 상태를 다시 확인합니다.");
+        startPolling(true);
       };
     }
 
     return () => {
-      cancelled = true;
-      clearFallback();
+      disposed = true;
+      clearInactivityTimer();
+      stopPolling();
       source?.close();
     };
   }, [jobId]);
 
-  return { status, isLoading, error };
+  return { status, isLoading, isExpired, error };
+}
+
+function normalizeJobStatus(status: JobStatus): JobStatus {
+  return {
+    ...status,
+    progress: status.progress ? normalizeJobProgress(status.progress) : null,
+    queuePosition: typeof status.queuePosition === "number" ? status.queuePosition : null,
+    warnings: Array.isArray(status.warnings) ? status.warnings : [],
+  };
+}
+
+function normalizeJobProgress(progress: JobProgress): JobProgress {
+  return {
+    ...progress,
+    sheet: progress.sheet ?? null,
+  };
+}
+
+function isTerminal(status: JobStatus) {
+  return status.status === "completed" || status.status === "failed";
+}
+
+function parseEventData(event: Event): unknown {
+  if (!(event instanceof MessageEvent) || typeof event.data !== "string") {
+    return null;
+  }
+
+  try {
+    return JSON.parse(event.data) as unknown;
+  } catch {
+    return null;
+  }
+}
+
+function isJobStatus(value: unknown): value is JobStatus {
+  if (typeof value !== "object" || value === null || !("status" in value)) {
+    return false;
+  }
+
+  const state = (value as { status: unknown }).status;
+  return state === "queued" || state === "active" || state === "completed" || state === "failed";
+}
+
+function isJobProgress(value: unknown): value is JobProgress {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+
+  const progress = value as { pct?: unknown; stage?: unknown };
+  return typeof progress.pct === "number" && typeof progress.stage === "string";
+}
+
+function isDoneEventData(value: unknown): value is DoneEventData {
+  return typeof value === "object" && value !== null && "files" in value && Array.isArray((value as { files: unknown }).files);
+}
+
+function isFailedEventData(value: unknown): value is FailedEventData {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+
+  const failure = value as { code?: unknown; message?: unknown };
+  return typeof failure.code === "string" && typeof failure.message === "string";
+}
+
+function readErrorMessage(value: unknown) {
+  if (typeof value !== "object" || value === null || !("error" in value)) {
+    return null;
+  }
+
+  const error = (value as { error?: unknown }).error;
+  if (typeof error !== "object" || error === null || !("message" in error)) {
+    return null;
+  }
+
+  const message = (error as { message?: unknown }).message;
+  return typeof message === "string" ? message : null;
+}
+
+function isAbortError(value: unknown) {
+  return value instanceof DOMException && value.name === "AbortError";
 }

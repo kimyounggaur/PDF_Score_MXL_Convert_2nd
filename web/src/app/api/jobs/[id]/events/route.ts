@@ -1,19 +1,23 @@
 import { errorMessage, normalizeFailureCode } from "@/lib/errors";
-import { getJobStatus } from "@/lib/jobs";
-import { getConversionQueueEvents, type ConversionFile, type ConversionProgress, type ConversionWarning } from "@/lib/queue";
+import { getJobEventHub, type JobQueueEvent } from "@/lib/job-event-hub";
+import { getJobStatus, type JobStatus } from "@/lib/jobs";
 import { isSafeJobId } from "@/lib/paths";
+import type { ConversionFile, ConversionProgress, ConversionWarning } from "@/lib/queue";
 
 export const runtime = "nodejs";
 
-type Controller = ReadableStreamDefaultController<Uint8Array>;
-
 const encoder = new TextEncoder();
+const SERVICE_UNAVAILABLE = {
+  code: "SERVICE_UNAVAILABLE",
+  message: "작업 상태 서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.",
+  recoverable: true,
+};
 
-export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
+export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
 
   if (!isSafeJobId(id)) {
-    return new Response("event: error\ndata: {\"code\":\"JOB_NOT_FOUND\",\"message\":\"존재하지 않거나 만료된 작업입니다.\"}\n\n", {
+    return new Response(sseFrame("failed", { code: "JOB_NOT_FOUND", message: errorMessage("JOB_NOT_FOUND") }), {
       status: 404,
       headers: sseHeaders(),
     });
@@ -22,88 +26,186 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
   let cleanup: () => void = () => undefined;
 
   const stream = new ReadableStream<Uint8Array>({
-    async start(controller) {
+    start(controller) {
       let closed = false;
-      const send = (event: string, data: unknown) => {
-        if (closed) {
-          return;
-        }
-        controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
-      };
-      const ping = () => {
-        if (!closed) {
-          controller.enqueue(encoder.encode(": ping\n\n"));
-        }
-      };
+      let initialized = false;
+      let currentState: JobStatus["status"] | null = null;
+      let refreshTimer: ReturnType<typeof setInterval> | null = null;
+      let unsubscribe: () => void = () => undefined;
+      let eventChain = Promise.resolve();
+      const pendingEvents: JobQueueEvent[] = [];
+
       const close = () => {
         if (closed) {
           return;
         }
+
         closed = true;
-        clearInterval(pingTimer);
-        queueEvents.off("progress", onProgress);
-        queueEvents.off("completed", onCompleted);
-        queueEvents.off("failed", onFailed);
-        controller.close();
-      };
-
-      const queueEvents = getConversionQueueEvents();
-      const pingTimer = setInterval(ping, 15_000);
-
-      const onProgress = ({ jobId, data }: { jobId: string; data: unknown }) => {
-        if (jobId !== id) {
-          return;
+        if (refreshTimer) {
+          clearInterval(refreshTimer);
+          refreshTimer = null;
         }
-        send("progress", normalizeProgress(data));
+        unsubscribe();
+        request.signal.removeEventListener("abort", close);
+        try {
+          controller.close();
+        } catch {
+          // The browser or stream may already have closed the controller.
+        }
       };
 
-      const onCompleted = ({ jobId, returnvalue }: { jobId: string; returnvalue: unknown }) => {
-        if (jobId !== id) {
-          return;
+      const send = (event: string, data: unknown) => {
+        if (closed) {
+          return false;
         }
 
-        const files = normalizeCompletedFiles(returnvalue);
-        const warnings = normalizeCompletedWarnings(returnvalue);
-        send("done", { files, warnings });
-        close();
+        try {
+          controller.enqueue(encoder.encode(sseFrame(event, data)));
+          return true;
+        } catch {
+          close();
+          return false;
+        }
       };
 
-      const onFailed = ({ jobId, failedReason }: { jobId: string; failedReason: unknown }) => {
-        if (jobId !== id) {
+      const sendComment = () => {
+        if (closed) {
           return;
         }
 
-        const code = normalizeFailureCode(failedReason);
-        send("error", { code, message: errorMessage(code) });
-        close();
+        try {
+          controller.enqueue(encoder.encode(": ping\n\n"));
+        } catch {
+          close();
+        }
       };
 
-      queueEvents.on("progress", onProgress);
-      queueEvents.on("completed", onCompleted);
-      queueEvents.on("failed", onFailed);
+      const failConnection = () => {
+        if (send("failed", SERVICE_UNAVAILABLE)) {
+          close();
+        }
+      };
+
+      const publishStatus = (status: JobStatus) => {
+        currentState = status.status;
+        if (!send("status", status)) {
+          return;
+        }
+
+        if (status.status === "completed") {
+          send("done", { files: status.files ?? [], warnings: status.warnings });
+          close();
+        } else if (status.status === "failed" && status.error) {
+          send("failed", status.error);
+          close();
+        }
+      };
+
+      const refreshStatus = async (forceActive = false) => {
+        const status = await getJobStatus(id);
+        if (closed) {
+          return;
+        }
+
+        if (!status) {
+          send("failed", { code: "JOB_NOT_FOUND", message: errorMessage("JOB_NOT_FOUND") });
+          close();
+          return;
+        }
+
+        publishStatus(
+          forceActive && status.status === "queued"
+            ? { ...status, status: "active", queuePosition: null }
+            : status,
+        );
+      };
+
+      const processQueueEvent = async (event: JobQueueEvent) => {
+        if (closed) {
+          return;
+        }
+
+        if (event.type === "active") {
+          await refreshStatus(true);
+          return;
+        }
+
+        if (event.type === "progress") {
+          currentState = "active";
+          send("progress", normalizeProgress(event.data));
+          return;
+        }
+
+        if (event.type === "completed") {
+          currentState = "completed";
+          send("done", normalizeCompletedResult(event.returnvalue));
+          close();
+          return;
+        }
+
+        if (event.type === "failed") {
+          currentState = "failed";
+          const code = normalizeFailureCode(event.failedReason);
+          send("failed", { code, message: errorMessage(code) });
+          close();
+          return;
+        }
+
+        failConnection();
+      };
+
+      const scheduleQueueEvent = (event: JobQueueEvent) => {
+        if (!initialized) {
+          pendingEvents.push(event);
+          return;
+        }
+
+        eventChain = eventChain.then(() => processQueueEvent(event)).catch(failConnection);
+      };
+
       cleanup = close;
-
-      const status = await getJobStatus(id);
-      if (!status) {
-        send("error", { code: "JOB_NOT_FOUND", message: errorMessage("JOB_NOT_FOUND") });
+      if (request.signal.aborted) {
         close();
         return;
       }
 
-      if (status.progress) {
-        send("progress", status.progress);
-      }
+      request.signal.addEventListener("abort", close, { once: true });
+      unsubscribe = getJobEventHub().subscribe(id, scheduleQueueEvent);
+      refreshTimer = setInterval(() => {
+        if (currentState === "queued") {
+          eventChain = eventChain.then(() => refreshStatus()).catch(failConnection);
+        } else {
+          sendComment();
+        }
+      }, 15_000);
 
-      if (status.status === "completed") {
-        send("done", { files: status.files ?? [] });
-        close();
-        return;
-      }
+      void (async () => {
+        try {
+          const status = await getJobStatus(id);
+          if (closed) {
+            return;
+          }
 
-      if (status.status === "failed" && status.error) {
-        send("error", status.error);
-        close();
-      }
+          if (!status) {
+            send("failed", { code: "JOB_NOT_FOUND", message: errorMessage("JOB_NOT_FOUND") });
+            close();
+            return;
+          }
+
+          // The first named event is always a complete server snapshot.
+          publishStatus(status);
+          if (closed) {
+            return;
+          }
+
+          initialized = true;
+          for (const event of pendingEvents.splice(0)) {
+            scheduleQueueEvent(event);
+          }
+        } catch {
+          failConnection();
+        }
+      })();
     },
     cancel() {
       cleanup();
@@ -122,6 +224,10 @@ function sseHeaders() {
     Connection: "keep-alive",
     "X-Accel-Buffering": "no",
   };
+}
+
+function sseFrame(event: string, data: unknown) {
+  return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 }
 
 function normalizeProgress(data: unknown): ConversionProgress {
@@ -150,25 +256,32 @@ function normalizeSheet(value: unknown): { current: number; total: number } | nu
   return { current: sheet.current, total: sheet.total };
 }
 
-function normalizeCompletedFiles(returnvalue: unknown): ConversionFile[] {
-  if (typeof returnvalue !== "object" || returnvalue === null || !("files" in returnvalue)) {
-    return [];
+function normalizeCompletedResult(returnvalue: unknown): { files: ConversionFile[]; warnings: ConversionWarning[] } {
+  const value = parseReturnValue(returnvalue);
+  if (typeof value !== "object" || value === null) {
+    return { files: [], warnings: [] };
   }
 
-  const files = (returnvalue as { files?: unknown }).files;
-  if (!Array.isArray(files)) {
-    return [];
-  }
-
-  return files.filter(isConversionFile);
+  const result = value as { files?: unknown; warnings?: unknown };
+  return {
+    files: Array.isArray(result.files) ? result.files.filter(isConversionFile) : [],
+    warnings: normalizeCompletedWarnings(result.warnings),
+  };
 }
 
-function normalizeCompletedWarnings(returnvalue: unknown): ConversionWarning[] {
-  if (typeof returnvalue !== "object" || returnvalue === null || !("warnings" in returnvalue)) {
-    return [];
+function parseReturnValue(returnvalue: unknown): unknown {
+  if (typeof returnvalue !== "string") {
+    return returnvalue;
   }
 
-  const warnings = (returnvalue as { warnings?: unknown }).warnings;
+  try {
+    return JSON.parse(returnvalue) as unknown;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeCompletedWarnings(warnings: unknown): ConversionWarning[] {
   if (!Array.isArray(warnings)) {
     return [];
   }
@@ -177,10 +290,12 @@ function normalizeCompletedWarnings(returnvalue: unknown): ConversionWarning[] {
     if (typeof warning !== "object" || warning === null || !("code" in warning) || !("pages" in warning)) {
       return [];
     }
+
     const value = warning as { code: unknown; pages: unknown };
     if (value.code !== "SKIPPED_PAGES" || !Array.isArray(value.pages)) {
       return [];
     }
+
     const pages = value.pages.filter((page): page is number => typeof page === "number" && Number.isSafeInteger(page) && page > 0);
     return pages.length > 0 ? [{ code: "SKIPPED_PAGES" as const, pages }] : [];
   });

@@ -2,7 +2,7 @@
 
 import { Download, FileMusic, RefreshCw, XCircle } from "lucide-react";
 import { useState } from "react";
-import type { StoredJob } from "@/lib/client-types";
+import type { JobStatus, StoredJob } from "@/lib/client-types";
 import { formatBytes, progressLabel, resultFileLabel, skippedPagesLabel } from "@/lib/ui";
 import { useJobStatus } from "@/hooks/use-job-status";
 import { ScorePreview } from "./score-preview";
@@ -14,13 +14,13 @@ import { Progress } from "./ui/progress";
 
 export function JobCard({ job, onRemove }: { job: StoredJob; onRemove: (jobId: string) => void }) {
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
-  const { status, isLoading, error } = useJobStatus(job.jobId);
-  const state = status?.status ?? "queued";
-  const progress = status?.progress?.pct ?? (state === "queued" ? 3 : 0);
-  const badge = badgeForState(state, isLoading);
+  const { status, isLoading, isExpired, error } = useJobStatus(job.jobId);
+  const state: JobViewState = isExpired ? "expired" : (status?.status ?? "queued");
+  const progress = status?.progress?.pct ?? 0;
+  const badge = badgeForState(state, isLoading, status?.queuePosition ?? null);
 
   return (
-    <Card>
+    <Card className={isExpired ? "border-slate-200 bg-slate-100 shadow-none" : undefined} data-testid="job-card">
       <CardHeader className="flex flex-row items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
@@ -30,68 +30,97 @@ export function JobCard({ job, onRemove }: { job: StoredJob; onRemove: (jobId: s
           <p className="mt-1 text-xs text-slate-500">작업 ID: {job.jobId.slice(0, 8)}</p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <Badge tone={badge.tone}>{badge.label}</Badge>
-          <Button variant="ghost" size="sm" onClick={() => onRemove(job.jobId)} aria-label="작업 카드 제거">
-            <XCircle className="h-4 w-4" aria-hidden="true" />
-          </Button>
+          <Badge tone={badge.tone} data-testid="job-status">
+            {badge.label}
+          </Badge>
+          {!isExpired ? (
+            <Button variant="ghost" size="sm" onClick={() => onRemove(job.jobId)} aria-label="작업 카드 제거">
+              <XCircle className="h-4 w-4" aria-hidden="true" />
+            </Button>
+          ) : null}
         </div>
       </CardHeader>
       <CardContent>
-        {error ? <Alert tone="error">{error}</Alert> : null}
-
-        {state === "failed" && status?.error ? <Alert tone="error">{status.error.message}</Alert> : null}
-
-        {status?.warnings.map((warning) => (
-          <Alert key={`${warning.code}:${warning.pages.join(",")}`} tone="warning">
-            {skippedPagesLabel(warning.pages)}
-          </Alert>
-        ))}
-
-        {state !== "completed" && state !== "failed" ? (
-          <div className="space-y-3">
-            <Progress value={progress} />
-            <div className="flex items-center justify-between gap-3 text-sm text-slate-600">
-              <span>{progressLabel(status?.progress)}</span>
-              <span className="font-mono text-xs">{Math.round(progress)}%</span>
-            </div>
+        {isExpired ? (
+          <div className="flex flex-col items-start gap-3 text-sm text-slate-600">
+            <p>결과가 삭제되었습니다(24시간 경과).</p>
+            <Button variant="secondary" size="sm" onClick={() => onRemove(job.jobId)}>
+              목록에서 지우기
+            </Button>
           </div>
-        ) : null}
+        ) : (
+          <>
+            {error ? <Alert tone="error">{error}</Alert> : null}
 
-        {state === "completed" && status?.files ? (
-          <div className="space-y-4">
-            <Alert tone="info">결과는 24시간 후 자동 삭제됩니다.</Alert>
-            <div className="flex flex-wrap gap-2">
-              {status.files.map((file, index) => (
-                <a key={file.name} href={`/api/jobs/${job.jobId}/files/${encodeURIComponent(file.name)}`}>
-                  <Button variant="secondary">
-                    <Download className="h-4 w-4" aria-hidden="true" />
-                    {resultFileLabel(file.name, index, status.files?.length ?? 1)}
-                    <span className="font-mono text-xs text-slate-500">{formatBytes(file.bytes)}</span>
+            {state === "failed" && status?.error ? <Alert tone="error">{status.error.message}</Alert> : null}
+
+            {status?.warnings.map((warning) => (
+              <Alert key={`${warning.code}:${warning.pages.join(",")}`} tone="warning">
+                {skippedPagesLabel(warning.pages)}
+              </Alert>
+            ))}
+
+            {state === "queued" && !isLoading ? (
+              <p className="text-sm text-slate-600">변환을 기다리고 있습니다.</p>
+            ) : null}
+
+            {state === "active" ? (
+              <div className="space-y-3" data-testid="job-progress">
+                <Progress value={progress} />
+                <div className="flex items-center justify-between gap-3 text-sm text-slate-600">
+                  <span>{progressLabel(status?.progress ?? { stage: "starting", sheet: null })}</span>
+                  <span className="font-mono text-xs">{Math.round(progress)}%</span>
+                </div>
+              </div>
+            ) : null}
+
+            {state === "completed" && status?.files ? (
+              <div className="space-y-4">
+                <Alert tone="info">결과는 24시간 후 자동 삭제됩니다.</Alert>
+                <div className="flex flex-wrap gap-2">
+                  {status.files.map((file, index) => (
+                    <a key={file.name} href={`/api/jobs/${job.jobId}/files/${encodeURIComponent(file.name)}`}>
+                      <Button variant="secondary">
+                        <Download className="h-4 w-4" aria-hidden="true" />
+                        {resultFileLabel(file.name, index, status.files?.length ?? 1)}
+                        <span className="font-mono text-xs text-slate-500">{formatBytes(file.bytes)}</span>
+                      </Button>
+                    </a>
+                  ))}
+                  <Button variant="primary" onClick={() => setIsPreviewOpen((value) => !value)}>
+                    {isPreviewOpen ? "미리보기 닫기" : "미리보기"}
                   </Button>
-                </a>
-              ))}
-              <Button variant="primary" onClick={() => setIsPreviewOpen((value) => !value)}>
-                {isPreviewOpen ? "미리보기 닫기" : "미리보기"}
-              </Button>
-            </div>
-            {isPreviewOpen ? <ScorePreview jobId={job.jobId} files={status.files} /> : null}
-          </div>
-        ) : null}
+                </div>
+                {isPreviewOpen ? <ScorePreview jobId={job.jobId} files={status.files} /> : null}
+              </div>
+            ) : null}
 
-        {isLoading ? (
-          <div className="flex items-center gap-2 text-sm text-slate-500">
-            <RefreshCw className="h-4 w-4 animate-spin" aria-hidden="true" />
-            상태를 확인하는 중입니다.
-          </div>
-        ) : null}
+            {isLoading ? (
+              <div className="flex items-center gap-2 text-sm text-slate-500">
+                <RefreshCw className="h-4 w-4 animate-spin" aria-hidden="true" />
+                상태를 확인하는 중입니다.
+              </div>
+            ) : null}
+          </>
+        )}
       </CardContent>
     </Card>
   );
 }
 
-function badgeForState(state: string, isLoading: boolean): { label: string; tone: "slate" | "blue" | "teal" | "rose" | "amber" } {
+type JobViewState = JobStatus["status"] | "expired";
+
+function badgeForState(
+  state: JobViewState,
+  isLoading: boolean,
+  queuePosition: number | null,
+): { label: string; tone: "slate" | "blue" | "teal" | "rose" | "amber" } {
   if (isLoading) {
     return { label: "확인 중", tone: "slate" };
+  }
+
+  if (state === "expired") {
+    return { label: "만료됨", tone: "slate" };
   }
 
   if (state === "active") {
@@ -106,5 +135,8 @@ function badgeForState(state: string, isLoading: boolean): { label: string; tone
     return { label: "실패", tone: "rose" };
   }
 
-  return { label: "대기 중", tone: "amber" };
+  return {
+    label: queuePosition && queuePosition > 0 ? `대기 중 · ${queuePosition}번째 순서` : "대기 중",
+    tone: "amber",
+  };
 }

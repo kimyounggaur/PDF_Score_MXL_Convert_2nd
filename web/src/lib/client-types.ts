@@ -19,6 +19,7 @@ export type JobWarning = {
 export type JobStatus = {
   status: "queued" | "active" | "completed" | "failed";
   progress: JobProgress | null;
+  queuePosition: number | null;
   files: JobFile[] | null;
   warnings: JobWarning[];
   error: { code: ErrorCode | string; message: string } | null;

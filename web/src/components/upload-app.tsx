@@ -4,33 +4,40 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { FileUp, Info, Loader2, Music2, ShieldCheck } from "lucide-react";
 import { useDropzone } from "react-dropzone";
 import type { StoredJob } from "@/lib/client-types";
+import { deserializeStoredJobs, pruneStoredJobs, serializeStoredJobs, STORED_JOBS_KEY } from "@/lib/job-storage";
 import { cn } from "@/lib/ui";
 import { Alert } from "./ui/alert";
 import { Button } from "./ui/button";
 import { Card, CardContent } from "./ui/card";
 import { JobCard } from "./job-card";
 
-const STORAGE_KEY = "pdf-score-mxl:jobs";
-
 export function UploadApp() {
   const [jobs, setJobs] = useState<StoredJob[]>([]);
   const [message, setMessage] = useState<{ tone: "info" | "warning" | "error"; text: string } | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [isHydrated, setIsHydrated] = useState(false);
 
   useEffect(() => {
     try {
-      const raw = window.localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        setJobs(JSON.parse(raw) as StoredJob[]);
-      }
+      setJobs(deserializeStoredJobs(window.localStorage.getItem(STORED_JOBS_KEY)));
     } catch {
-      window.localStorage.removeItem(STORAGE_KEY);
+      setJobs([]);
+    } finally {
+      setIsHydrated(true);
     }
   }, []);
 
   useEffect(() => {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(jobs));
-  }, [jobs]);
+    if (!isHydrated) {
+      return;
+    }
+
+    try {
+      window.localStorage.setItem(STORED_JOBS_KEY, serializeStoredJobs(jobs));
+    } catch {
+      // 저장 공간이 차도 현재 탭의 작업 목록과 변환은 계속 사용할 수 있다.
+    }
+  }, [isHydrated, jobs]);
 
   const uploadFile = useCallback(async (file: File) => {
     setIsUploading(true);
@@ -55,7 +62,7 @@ export function UploadApp() {
         fileName: file.name,
         createdAt: new Date().toISOString(),
       };
-      setJobs((current) => [nextJob, ...current.filter((job) => job.jobId !== nextJob.jobId)]);
+      setJobs((current) => pruneStoredJobs([nextJob, ...current]));
       setMessage({ tone: "info", text: "업로드가 완료되어 변환 대기열에 등록했습니다." });
     } catch {
       setMessage({ tone: "error", text: "업로드 중 문제가 발생했습니다. 다시 시도해 주세요." });
@@ -95,6 +102,10 @@ export function UploadApp() {
     ],
     [],
   );
+
+  const removeJob = useCallback((jobId: string) => {
+    setJobs((current) => current.filter((item) => item.jobId !== jobId));
+  }, []);
 
   return (
     <main className="min-h-screen bg-slate-50">
@@ -181,7 +192,7 @@ export function UploadApp() {
           ) : (
             <div className="space-y-4">
               {jobs.map((job) => (
-                <JobCard key={job.jobId} job={job} onRemove={(jobId) => setJobs((current) => current.filter((item) => item.jobId !== jobId))} />
+                <JobCard key={job.jobId} job={job} onRemove={removeJob} />
               ))}
             </div>
           )}
