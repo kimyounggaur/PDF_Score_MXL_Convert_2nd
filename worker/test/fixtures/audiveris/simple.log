@@ -1,0 +1,52 @@
+Picked up JAVA_TOOL_OPTIONS: -Xmx2g -Djava.awt.headless=true
+INFO  [] Languages 138 | Installed OCR languages: eng,kor
+INFO  [input] Book 560 | 2 sheets in /data/jobs/example/input.pdf
+INFO  [] Book 1929 | Book reaching PAGE on sheets:[#1#2]
+INFO  [input#1] StepMonitoring 98 | LOAD
+INFO  [input#1] StepMonitoring 98 | BINARY
+INFO  [input#1] StepMonitoring 98 | SCALE
+INFO  [input#1] StepMonitoring 98 | GRID
+INFO  [input#1] PeakGraph 310 | Systems: #1[1, 2] #2[3, 4]
+INFO  [input#1] StepMonitoring 98 | HEADERS
+INFO  [input#1] StepMonitoring 98 | STEM_SEEDS
+INFO  [input#1] StemSeedsStep 86 | stem(3 max:4)
+INFO  [input#1] StepMonitoring 98 | BEAMS
+INFO  [input#1] StepMonitoring 98 | LEDGERS
+INFO  [input#1] StepMonitoring 98 | HEADS
+INFO  [input#1] HeadSeedTally 235 | Scale information: HeadSeeds{NOTEHEAD_BLACK[L:0.5]}
+INFO  [input#1] StepMonitoring 98 | STEMS
+INFO  [input#1] StepMonitoring 98 | REDUCTION
+INFO  [input#1] StepMonitoring 98 | CUE_BEAMS
+INFO  [input#1] StepMonitoring 98 | TEXTS
+INFO  [input#1] StepMonitoring 98 | MEASURES
+INFO  [input#1] StepMonitoring 98 | CHORDS
+INFO  [input#1] StepMonitoring 98 | CURVES
+INFO  [input#1] StepMonitoring 98 | SYMBOLS
+INFO  [input#1] StepMonitoring 98 | LINKS
+INFO  [input#1] StepMonitoring 98 | RHYTHMS
+INFO  [input#1] StackRhythm 224 | S1 MeasureStack#1 no correct rhythm
+INFO  [input#1] StepMonitoring 98 | PAGE
+INFO  [input#2] StepMonitoring 98 | LOAD
+INFO  [input#2] StepMonitoring 98 | BINARY
+INFO  [input#2] StepMonitoring 98 | SCALE
+INFO  [input#2] StepMonitoring 98 | GRID
+INFO  [input#2] StepMonitoring 98 | HEADERS
+INFO  [input#2] StepMonitoring 98 | STEM_SEEDS
+INFO  [input#2] StepMonitoring 98 | BEAMS
+INFO  [input#2] StepMonitoring 98 | LEDGERS
+INFO  [input#2] StepMonitoring 98 | HEADS
+INFO  [input#2] StepMonitoring 98 | STEMS
+INFO  [input#2] StepMonitoring 98 | REDUCTION
+INFO  [input#2] StepMonitoring 98 | CUE_BEAMS
+INFO  [input#2] StepMonitoring 98 | TEXTS
+INFO  [input#2] StepMonitoring 98 | MEASURES
+INFO  [input#2] StepMonitoring 98 | CHORDS
+INFO  [input#2] StepMonitoring 98 | CURVES
+INFO  [input#2] StepMonitoring 98 | SYMBOLS
+INFO  [input#2] StepMonitoring 98 | LINKS
+INFO  [input#2] StepMonitoring 98 | RHYTHMS
+INFO  [input#2] PageRhythm 199 | {Page#2.1} Time value reused from sheet#1
+INFO  [input#2] StepMonitoring 98 | PAGE
+INFO  [input] SheetStub 900 | Loaded /sheet#1/sheet#1.xml
+INFO  [input] PartwiseBuilder 2706 | Exporting sheet(s): [#1#2]
+INFO  [input] ScoreExporter 164 | Score input exported to /data/jobs/example/out/input.mxl

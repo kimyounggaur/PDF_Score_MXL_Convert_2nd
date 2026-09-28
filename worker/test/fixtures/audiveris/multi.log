@@ -1,0 +1,11 @@
+# Minimal structural reference derived from the verified 3-page run recorded in docs/IMPROVEMENT_V2.md.
+INFO  [input] Book 560 | 3 sheets in /data/jobs/example/input.pdf
+INFO  [] Book 1929 | Book reaching PAGE on sheets:[#1#2#3]
+INFO  [input#1] StepMonitoring 98 | LOAD
+INFO  [input#1] StepMonitoring 98 | PAGE
+INFO  [input#2] StepMonitoring 98 | LOAD
+INFO  [input#2] StepMonitoring 98 | PAGE
+INFO  [input#3] StepMonitoring 98 | LOAD
+INFO  [input#3] StepMonitoring 98 | PAGE
+INFO  [input] PartwiseBuilder 2706 | Exporting sheet(s): [#1#2#3]
+INFO  [input] ScoreExporter 164 | Score input exported to /data/jobs/example/out/input.mxl

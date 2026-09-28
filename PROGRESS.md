@@ -45,3 +45,7 @@
 - STEP 7: worker 격리, Redis 레이트리밋, 큐 심도 보호, 24시간 정리 작업, healthcheck를 구현했다. Docker CLI가 없어 격리/429/TTL 실측은 실행하지 못했다.
 - STEP 8: MXL 검증 유틸, Playwright E2E, 품질 코퍼스 스크립트를 추가했다. Docker/Redis/Audiveris 런타임 부재로 E2E와 코퍼스 실측은 실행하지 못했다.
 - STEP 9: production compose, Caddyfile, .env.example, DEPLOY.md를 추가했다. Docker CLI가 없어 로컬 프로덕션 리허설은 실행하지 못했다.
+
+## 2차 개선 검증 메모
+
+- V2-1: 공개 PDF 3개를 내려받고 합성 PDF 3개를 생성해 `pdfinfo`와 PNG 렌더로 검증했다. web/worker `.dockerignore`, 재현 가능한 fixture 생성 스크립트, 설계서 실측 로그 기반 참조 픽스처를 추가했다. 현재 Windows 환경에는 Docker CLI가 없어 워커 이미지 빌드·스모크 테스트·Audiveris 로컬 재실측은 미실행이며 `docs/V2_BASELINE.md`에 한계를 기록했다.

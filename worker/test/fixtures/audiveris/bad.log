@@ -1,0 +1,12 @@
+Picked up JAVA_TOOL_OPTIONS: -Xmx2g -Djava.awt.headless=true
+INFO  [] Languages 138 | Installed OCR languages: eng,kor
+INFO  [input] Book 560 | 1 sheet in /data/jobs/example/input.pdf
+INFO  [] Book 1929 | Book reaching PAGE on sheets:[#1]
+INFO  [input] StepMonitoring 98 | LOAD
+INFO  [input] StepMonitoring 98 | BINARY
+INFO  [input] StepMonitoring 98 | SCALE
+INFO  [input] StepMonitoring 98 | GRID
+WARN  [input] PeakGraph 305 | No system found
+INFO  [input] SheetStub 1194 | Sheet input flagged as invalid.
+INFO  [input] Book 596 | Could not export since transcription did not complete successfully
+WARN  [] Main 298 | Exit forced. Failure

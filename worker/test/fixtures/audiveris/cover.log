@@ -1,0 +1,50 @@
+INFO  [input] Book 560 | 3 sheets in /data/jobs/example/input.pdf
+INFO  [] Book 1929 | Book reaching PAGE on sheets:[#1#2#3]
+INFO  [input#1] StepMonitoring 98 | LOAD
+INFO  [input#1] StepMonitoring 98 | BINARY
+INFO  [input#1] StepMonitoring 98 | SCALE
+INFO  [input#1] StepMonitoring 98 | GRID
+WARN  [input#1] PeakGraph 305 | No system found
+INFO  [input#1] SheetStub 1194 | Sheet input#1 flagged as invalid.
+INFO  [input#2] StepMonitoring 98 | LOAD
+INFO  [input#2] StepMonitoring 98 | BINARY
+INFO  [input#2] StepMonitoring 98 | SCALE
+INFO  [input#2] StepMonitoring 98 | GRID
+INFO  [input#2] StepMonitoring 98 | HEADERS
+INFO  [input#2] StepMonitoring 98 | STEM_SEEDS
+INFO  [input#2] StepMonitoring 98 | BEAMS
+INFO  [input#2] StepMonitoring 98 | LEDGERS
+INFO  [input#2] StepMonitoring 98 | HEADS
+INFO  [input#2] StepMonitoring 98 | STEMS
+INFO  [input#2] StepMonitoring 98 | REDUCTION
+INFO  [input#2] StepMonitoring 98 | CUE_BEAMS
+INFO  [input#2] StepMonitoring 98 | TEXTS
+INFO  [input#2] StepMonitoring 98 | MEASURES
+INFO  [input#2] StepMonitoring 98 | CHORDS
+INFO  [input#2] StepMonitoring 98 | CURVES
+INFO  [input#2] StepMonitoring 98 | SYMBOLS
+INFO  [input#2] StepMonitoring 98 | LINKS
+INFO  [input#2] StepMonitoring 98 | RHYTHMS
+INFO  [input#2] StepMonitoring 98 | PAGE
+INFO  [input#3] StepMonitoring 98 | LOAD
+INFO  [input#3] StepMonitoring 98 | BINARY
+INFO  [input#3] StepMonitoring 98 | SCALE
+INFO  [input#3] StepMonitoring 98 | GRID
+INFO  [input#3] StepMonitoring 98 | HEADERS
+INFO  [input#3] StepMonitoring 98 | STEM_SEEDS
+INFO  [input#3] StepMonitoring 98 | BEAMS
+INFO  [input#3] StepMonitoring 98 | LEDGERS
+INFO  [input#3] StepMonitoring 98 | HEADS
+INFO  [input#3] StepMonitoring 98 | STEMS
+INFO  [input#3] StepMonitoring 98 | REDUCTION
+INFO  [input#3] StepMonitoring 98 | CUE_BEAMS
+INFO  [input#3] StepMonitoring 98 | TEXTS
+INFO  [input#3] StepMonitoring 98 | MEASURES
+INFO  [input#3] StepMonitoring 98 | CHORDS
+INFO  [input#3] StepMonitoring 98 | CURVES
+INFO  [input#3] StepMonitoring 98 | SYMBOLS
+INFO  [input#3] StepMonitoring 98 | LINKS
+INFO  [input#3] StepMonitoring 98 | RHYTHMS
+INFO  [input#3] StepMonitoring 98 | PAGE
+INFO  [input] Book 596 | Could not export since transcription did not complete successfully
+WARN  [] Main 298 | Exit forced. Failure
