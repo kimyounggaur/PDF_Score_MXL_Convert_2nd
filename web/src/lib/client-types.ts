@@ -3,6 +3,7 @@ import type { ErrorCode } from "./errors";
 export type JobProgress = {
   pct: number;
   stage: string;
+  sheet: { current: number; total: number } | null;
 };
 
 export type JobFile = {

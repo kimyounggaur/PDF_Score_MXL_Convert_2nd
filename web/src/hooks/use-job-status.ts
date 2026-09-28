@@ -98,7 +98,7 @@ export function useJobStatus(jobId: string) {
         const data = JSON.parse(event.data) as { files: JobFile[] };
         setStatus({
           status: "completed",
-          progress: { pct: 100, stage: "completed" },
+          progress: { pct: 100, stage: "completed", sheet: null },
           files: data.files,
           error: null,
         });

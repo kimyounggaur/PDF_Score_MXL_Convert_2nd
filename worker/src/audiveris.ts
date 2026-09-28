@@ -4,8 +4,8 @@ import path from "node:path";
 import type { Job } from "bullmq";
 import { getAudiverisBin, getConversionTimeoutMs } from "./config.js";
 import { inputPdfPath, outputDir } from "./paths.js";
-import { parseAudiverisProgress } from "./progress.js";
-import type { ConversionJobData, ConversionProgress, ConversionResult } from "./types.js";
+import { AudiverisProgressTracker, LineBuffer, ProgressUpdateThrottler } from "./progress.js";
+import type { ConversionJobData, ConversionResult } from "./types.js";
 import { ConversionError } from "./types.js";
 import { validateMxl } from "./validate-mxl.js";
 
@@ -18,7 +18,9 @@ export async function runAudiverisConversion(job: Job<ConversionJobData>): Promi
   const inputPath = inputPdfPath(jobId);
 
   await mkdir(outDir, { recursive: true });
-  await job.updateProgress({ pct: 1, stage: "queued" });
+
+  const progressTracker = new AudiverisProgressTracker();
+  await job.updateProgress(progressTracker.getProgress());
 
   const args = [
     "-batch",
@@ -33,9 +35,12 @@ export async function runAudiverisConversion(job: Job<ConversionJobData>): Promi
   ];
 
   const lines: string[] = [];
-  let progress: ConversionProgress = { pct: 1, stage: "starting" };
   let timedOut = false;
   let settled = false;
+
+  const progressPublisher = new ProgressUpdateThrottler(async (progress) => {
+    await job.updateProgress(progress).catch(() => undefined);
+  });
 
   const child = spawn(getAudiverisBin(), args, {
     detached: true,
@@ -61,17 +66,23 @@ export async function runAudiverisConversion(job: Job<ConversionJobData>): Promi
       lines.shift();
     }
 
-    const parsed = parseAudiverisProgress(line, progress);
-    if (parsed && (parsed.pct !== progress.pct || parsed.stage !== progress.stage)) {
-      progress = parsed;
-      void job.updateProgress(progress).catch(() => undefined);
+    const update = progressTracker.pushLine(line);
+    if (update) {
+      progressPublisher.publish(update.progress, update.immediate);
     }
+  };
+
+  const stdoutLines = new LineBuffer(consumeLine);
+  const stderrLines = new LineBuffer(consumeLine);
+  const flushLineBuffers = () => {
+    stdoutLines.flush();
+    stderrLines.flush();
   };
 
   child.stdout?.setEncoding("utf8");
   child.stderr?.setEncoding("utf8");
-  child.stdout?.on("data", (chunk: string) => chunk.split(/\r?\n/).forEach(consumeLine));
-  child.stderr?.on("data", (chunk: string) => chunk.split(/\r?\n/).forEach(consumeLine));
+  child.stdout?.on("data", (chunk: string) => stdoutLines.push(chunk));
+  child.stderr?.on("data", (chunk: string) => stderrLines.push(chunk));
 
   return await new Promise<ConversionResult>((resolve, reject) => {
     child.on("error", (error) => {
@@ -80,7 +91,10 @@ export async function runAudiverisConversion(job: Job<ConversionJobData>): Promi
       }
       settled = true;
       clearTimeout(timeout);
-      reject(new ConversionError("ENGINE_ERROR", error.message));
+      flushLineBuffers();
+      void progressPublisher.close(false).finally(() => {
+        reject(new ConversionError("ENGINE_ERROR", error.message));
+      });
     });
 
     child.on("close", async (code, signal) => {
@@ -89,6 +103,8 @@ export async function runAudiverisConversion(job: Job<ConversionJobData>): Promi
       }
       settled = true;
       clearTimeout(timeout);
+      flushLineBuffers();
+      await progressPublisher.close(false);
 
       try {
         if (timedOut) {
@@ -99,7 +115,8 @@ export async function runAudiverisConversion(job: Job<ConversionJobData>): Promi
           throw new ConversionError("ENGINE_ERROR", `Audiveris exited with code ${code ?? "null"} signal ${signal ?? "none"}\n${lines.join("\n")}`);
         }
 
-        await job.updateProgress({ pct: 96, stage: "collecting" });
+        const sheet = progressTracker.getProgress().sheet;
+        await job.updateProgress({ pct: 98, stage: "collecting", sheet });
         const files = await listMxlFiles(outDir);
 
         if (files.length === 0) {
@@ -113,7 +130,7 @@ export async function runAudiverisConversion(job: Job<ConversionJobData>): Promi
           }
         }
 
-        await job.updateProgress({ pct: 100, stage: "completed" });
+        await job.updateProgress({ pct: 100, stage: "completed", sheet });
         resolve({
           files,
           durationMs: Date.now() - startedAt,

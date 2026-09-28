@@ -125,14 +125,28 @@ function sseHeaders() {
 
 function normalizeProgress(data: unknown): ConversionProgress {
   if (typeof data === "object" && data !== null && "pct" in data && "stage" in data) {
-    const value = data as { pct?: unknown; stage?: unknown };
+    const value = data as { pct?: unknown; stage?: unknown; sheet?: unknown };
     return {
       pct: typeof value.pct === "number" ? value.pct : 0,
       stage: typeof value.stage === "string" ? value.stage : "processing",
+      sheet: normalizeSheet(value.sheet),
     };
   }
 
-  return { pct: typeof data === "number" ? data : 0, stage: "processing" };
+  return { pct: typeof data === "number" ? data : 0, stage: "processing", sheet: null };
+}
+
+function normalizeSheet(value: unknown): { current: number; total: number } | null {
+  if (typeof value !== "object" || value === null || !("current" in value) || !("total" in value)) {
+    return null;
+  }
+
+  const sheet = value as { current: unknown; total: unknown };
+  if (typeof sheet.current !== "number" || typeof sheet.total !== "number") {
+    return null;
+  }
+
+  return { current: sheet.current, total: sheet.total };
 }
 
 function normalizeCompletedFiles(returnvalue: unknown): ConversionFile[] {

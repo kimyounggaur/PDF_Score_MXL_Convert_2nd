@@ -19,27 +19,37 @@ export function stageLabel(stage: string | undefined) {
     queued: "대기 중",
     starting: "변환 준비 중",
     processing: "악보 분석 중",
-    LOAD: "PDF 불러오는 중",
-    BINARY: "이미지 정리 중",
-    SCALE: "보표 크기 분석 중",
-    GRID: "보표 구조 분석 중",
-    HEADERS: "머리말 분석 중",
-    STEM_SEEDS: "기둥 후보 분석 중",
-    BEAMS: "빔 분석 중",
-    LEDGERS: "덧줄 분석 중",
-    HEADS: "음표 머리 분석 중",
-    STEMS: "음표 기둥 분석 중",
-    TEXTS: "텍스트 분석 중",
-    MEASURES: "마디 분석 중",
-    CHORDS: "화음 분석 중",
-    SYMBOLS: "기호 분석 중",
-    RHYTHMS: "리듬 검증 중",
-    PAGE: "페이지 정리 중",
-    collecting: "결과 파일 정리 중",
+    LOAD: "쪽 이미지 불러오는 중",
+    BINARY: "흑백으로 정리하는 중",
+    SCALE: "선 굵기·간격 재는 중",
+    GRID: "오선·마디줄 찾는 중",
+    HEADERS: "음자리표·조표·박자표 찾는 중",
+    STEM_SEEDS: "음표 기둥 후보 찾는 중",
+    BEAMS: "빔(꼬리 묶음) 찾는 중",
+    LEDGERS: "덧줄 찾는 중",
+    HEADS: "음표 머리 찾는 중",
+    STEMS: "음표 기둥 연결하는 중",
+    REDUCTION: "겹친 기호 정리하는 중",
+    CUE_BEAMS: "작은 음표의 빔 찾는 중",
+    TEXTS: "제목·가사 글자 읽는 중",
+    MEASURES: "마디 나누는 중",
+    CHORDS: "화음 묶는 중",
+    CURVES: "이음줄 같은 곡선 기호 찾는 중",
+    SYMBOLS: "나머지 기호 찾는 중",
+    LINKS: "기호 연결하는 중",
+    RHYTHMS: "리듬 맞추는 중",
+    PAGE: "쪽 마무리하는 중",
+    EXPORT: "MXL 파일 만드는 중",
+    collecting: "결과 확인하는 중",
     completed: "완료",
   };
 
-  return labels[stage ?? ""] ?? stage ?? "처리 중";
+  return labels[stage ?? ""] ?? "악보 분석 중";
+}
+
+export function progressLabel(progress: { stage: string; sheet: { current: number; total: number } | null } | null | undefined) {
+  const label = stageLabel(progress?.stage ?? "queued");
+  return progress?.sheet ? `${progress.sheet.current}/${progress.sheet.total}쪽 · ${label}` : label;
 }
 
 export function resultFileLabel(name: string, index: number, total: number) {

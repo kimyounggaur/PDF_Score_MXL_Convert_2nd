@@ -10,6 +10,7 @@ export type ConversionJobData = {
 export type ConversionProgress = {
   pct: number;
   stage: string;
+  sheet: { current: number; total: number } | null;
 };
 
 export type ConversionFile = {

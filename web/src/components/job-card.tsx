@@ -3,7 +3,7 @@
 import { Download, FileMusic, RefreshCw, XCircle } from "lucide-react";
 import { useState } from "react";
 import type { StoredJob } from "@/lib/client-types";
-import { formatBytes, resultFileLabel, stageLabel } from "@/lib/ui";
+import { formatBytes, progressLabel, resultFileLabel } from "@/lib/ui";
 import { useJobStatus } from "@/hooks/use-job-status";
 import { ScorePreview } from "./score-preview";
 import { Alert } from "./ui/alert";
@@ -45,7 +45,7 @@ export function JobCard({ job, onRemove }: { job: StoredJob; onRemove: (jobId: s
           <div className="space-y-3">
             <Progress value={progress} />
             <div className="flex items-center justify-between gap-3 text-sm text-slate-600">
-              <span>{stageLabel(status?.progress?.stage ?? "queued")}</span>
+              <span>{progressLabel(status?.progress)}</span>
               <span className="font-mono text-xs">{Math.round(progress)}%</span>
             </div>
           </div>

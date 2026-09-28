@@ -31,7 +31,7 @@ export async function getJobStatus(jobId: string): Promise<JobStatus | null> {
     const returnValue = job.returnvalue as ConversionResult | undefined;
     return {
       status: "completed",
-      progress: { pct: 100, stage: "completed" },
+      progress: { pct: 100, stage: "completed", sheet: null },
       files: returnValue?.files ?? (await listOutputFiles(jobId)),
       error: null,
     };
@@ -93,18 +93,32 @@ export async function readJobMetadata(jobId: string): Promise<JobMetadata | null
 
 function normalizeProgress(progress: unknown): ConversionProgress | null {
   if (typeof progress === "object" && progress !== null && "pct" in progress && "stage" in progress) {
-    const value = progress as { pct: unknown; stage: unknown };
+    const value = progress as { pct: unknown; stage: unknown; sheet?: unknown };
     return {
       pct: typeof value.pct === "number" ? value.pct : 0,
       stage: typeof value.stage === "string" ? value.stage : "processing",
+      sheet: normalizeSheet(value.sheet),
     };
   }
 
   if (typeof progress === "number") {
-    return { pct: progress, stage: "processing" };
+    return { pct: progress, stage: "processing", sheet: null };
   }
 
   return null;
+}
+
+function normalizeSheet(value: unknown): { current: number; total: number } | null {
+  if (typeof value !== "object" || value === null || !("current" in value) || !("total" in value)) {
+    return null;
+  }
+
+  const sheet = value as { current: unknown; total: unknown };
+  if (typeof sheet.current !== "number" || typeof sheet.total !== "number") {
+    return null;
+  }
+
+  return { current: sheet.current, total: sheet.total };
 }
 
 function mapState(state: string): "queued" | "active" | "completed" | "failed" {
