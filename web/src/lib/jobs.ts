@@ -1,13 +1,14 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { errorMessage, normalizeFailureCode } from "./errors";
-import { getJob, type ConversionFile, type ConversionProgress, type ConversionResult } from "./queue";
+import { getJob, type ConversionFile, type ConversionProgress, type ConversionResult, type ConversionWarning } from "./queue";
 import { metadataPath, outputDir } from "./paths";
 
 export type JobStatus = {
   status: "queued" | "active" | "completed" | "failed";
   progress: ConversionProgress | null;
   files: ConversionFile[] | null;
+  warnings: ConversionWarning[];
   error: { code: string; message: string } | null;
 };
 
@@ -33,6 +34,7 @@ export async function getJobStatus(jobId: string): Promise<JobStatus | null> {
       status: "completed",
       progress: { pct: 100, stage: "completed", sheet: null },
       files: returnValue?.files ?? (await listOutputFiles(jobId)),
+      warnings: returnValue?.warnings ?? [],
       error: null,
     };
   }
@@ -43,6 +45,7 @@ export async function getJobStatus(jobId: string): Promise<JobStatus | null> {
       status: "failed",
       progress,
       files: null,
+      warnings: [],
       error: {
         code,
         message: errorMessage(code),
@@ -54,6 +57,7 @@ export async function getJobStatus(jobId: string): Promise<JobStatus | null> {
     status: mapState(state),
     progress,
     files: null,
+    warnings: [],
     error: null,
   };
 }

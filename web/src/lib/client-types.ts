@@ -11,10 +11,16 @@ export type JobFile = {
   bytes: number;
 };
 
+export type JobWarning = {
+  code: "SKIPPED_PAGES";
+  pages: number[];
+};
+
 export type JobStatus = {
   status: "queued" | "active" | "completed" | "failed";
   progress: JobProgress | null;
   files: JobFile[] | null;
+  warnings: JobWarning[];
   error: { code: ErrorCode | string; message: string } | null;
 };
 

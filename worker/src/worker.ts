@@ -20,13 +20,19 @@ const worker = new Worker<ConversionJobData>(
           level: "info",
           event: "job_completed",
           jobId: job.data.jobId,
+          code: "SUCCESS",
           durationMs: result.durationMs,
           fileCount: result.files.length,
+          pages: result.totalSheets,
+          targetSheets: result.targetSheets,
+          invalidSheets: result.invalidSheets,
+          recovered: result.recovered,
         }),
       );
       return result;
     } catch (error) {
       const code = error instanceof ConversionError ? error.code : "ENGINE_ERROR";
+      const diagnostics = error instanceof ConversionError ? error.diagnostics : undefined;
       console.log(
         JSON.stringify({
           level: "error",
@@ -35,6 +41,12 @@ const worker = new Worker<ConversionJobData>(
           durationMs: Date.now() - startedAt,
           code,
           message: error instanceof Error ? error.message : String(error),
+          details: error instanceof ConversionError ? error.details : undefined,
+          pages: diagnostics?.totalSheets ?? null,
+          targetSheets: diagnostics?.targetSheets ?? [],
+          invalidSheets: diagnostics?.invalidSheets ?? [],
+          recovered: diagnostics?.recovered ?? false,
+          engineTail: diagnostics?.engineTail ?? [],
         }),
       );
       throw error;

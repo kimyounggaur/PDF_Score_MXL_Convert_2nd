@@ -3,7 +3,7 @@
 import { Download, FileMusic, RefreshCw, XCircle } from "lucide-react";
 import { useState } from "react";
 import type { StoredJob } from "@/lib/client-types";
-import { formatBytes, progressLabel, resultFileLabel } from "@/lib/ui";
+import { formatBytes, progressLabel, resultFileLabel, skippedPagesLabel } from "@/lib/ui";
 import { useJobStatus } from "@/hooks/use-job-status";
 import { ScorePreview } from "./score-preview";
 import { Alert } from "./ui/alert";
@@ -40,6 +40,12 @@ export function JobCard({ job, onRemove }: { job: StoredJob; onRemove: (jobId: s
         {error ? <Alert tone="error">{error}</Alert> : null}
 
         {state === "failed" && status?.error ? <Alert tone="error">{status.error.message}</Alert> : null}
+
+        {status?.warnings.map((warning) => (
+          <Alert key={`${warning.code}:${warning.pages.join(",")}`} tone="warning">
+            {skippedPagesLabel(warning.pages)}
+          </Alert>
+        ))}
 
         {state !== "completed" && state !== "failed" ? (
           <div className="space-y-3">

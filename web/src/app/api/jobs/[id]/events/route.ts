@@ -1,6 +1,6 @@
 import { errorMessage, normalizeFailureCode } from "@/lib/errors";
 import { getJobStatus } from "@/lib/jobs";
-import { getConversionQueueEvents, type ConversionFile, type ConversionProgress } from "@/lib/queue";
+import { getConversionQueueEvents, type ConversionFile, type ConversionProgress, type ConversionWarning } from "@/lib/queue";
 import { isSafeJobId } from "@/lib/paths";
 
 export const runtime = "nodejs";
@@ -63,7 +63,8 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
         }
 
         const files = normalizeCompletedFiles(returnvalue);
-        send("done", { files });
+        const warnings = normalizeCompletedWarnings(returnvalue);
+        send("done", { files, warnings });
         close();
       };
 
@@ -160,6 +161,29 @@ function normalizeCompletedFiles(returnvalue: unknown): ConversionFile[] {
   }
 
   return files.filter(isConversionFile);
+}
+
+function normalizeCompletedWarnings(returnvalue: unknown): ConversionWarning[] {
+  if (typeof returnvalue !== "object" || returnvalue === null || !("warnings" in returnvalue)) {
+    return [];
+  }
+
+  const warnings = (returnvalue as { warnings?: unknown }).warnings;
+  if (!Array.isArray(warnings)) {
+    return [];
+  }
+
+  return warnings.flatMap((warning) => {
+    if (typeof warning !== "object" || warning === null || !("code" in warning) || !("pages" in warning)) {
+      return [];
+    }
+    const value = warning as { code: unknown; pages: unknown };
+    if (value.code !== "SKIPPED_PAGES" || !Array.isArray(value.pages)) {
+      return [];
+    }
+    const pages = value.pages.filter((page): page is number => typeof page === "number" && Number.isSafeInteger(page) && page > 0);
+    return pages.length > 0 ? [{ code: "SKIPPED_PAGES" as const, pages }] : [];
+  });
 }
 
 function isConversionFile(file: unknown): file is ConversionFile {

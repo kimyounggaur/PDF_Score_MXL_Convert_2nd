@@ -18,9 +18,15 @@ export type ConversionFile = {
   bytes: number;
 };
 
+export type ConversionWarning = {
+  code: "SKIPPED_PAGES";
+  pages: number[];
+};
+
 export type ConversionResult = {
   files: ConversionFile[];
   durationMs: number;
+  warnings: ConversionWarning[];
 };
 
 type ConversionQueue = Queue<ConversionJobData, ConversionResult, "convert">;

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { JobFile, JobProgress, JobStatus } from "@/lib/client-types";
+import type { JobFile, JobProgress, JobStatus, JobWarning } from "@/lib/client-types";
 
 export function useJobStatus(jobId: string) {
   const [status, setStatus] = useState<JobStatus | null>(null);
@@ -81,6 +81,7 @@ export function useJobStatus(jobId: string) {
           status: current?.status === "queued" ? "queued" : "active",
           progress,
           files: null,
+          warnings: current?.warnings ?? [],
           error: null,
         }));
         setIsLoading(false);
@@ -95,11 +96,12 @@ export function useJobStatus(jobId: string) {
 
         terminal = true;
         clearFallback();
-        const data = JSON.parse(event.data) as { files: JobFile[] };
+        const data = JSON.parse(event.data) as { files: JobFile[]; warnings?: JobWarning[] };
         setStatus({
           status: "completed",
           progress: { pct: 100, stage: "completed", sheet: null },
           files: data.files,
+          warnings: data.warnings ?? [],
           error: null,
         });
         setIsLoading(false);
@@ -120,6 +122,7 @@ export function useJobStatus(jobId: string) {
             status: "failed",
             progress: null,
             files: null,
+            warnings: [],
             error: data,
           });
           setIsLoading(false);

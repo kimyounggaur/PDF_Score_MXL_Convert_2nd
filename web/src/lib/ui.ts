@@ -52,6 +52,11 @@ export function progressLabel(progress: { stage: string; sheet: { current: numbe
   return progress?.sheet ? `${progress.sheet.current}/${progress.sheet.total}쪽 · ${label}` : label;
 }
 
+export function skippedPagesLabel(pages: number[]) {
+  const sorted = [...new Set(pages)].sort((left, right) => left - right);
+  return `${sorted.join(", ")}쪽은 악보로 인식되지 않아 제외했습니다.`;
+}
+
 export function resultFileLabel(name: string, index: number, total: number) {
   const movement = name.match(/\.mvt(\d+)\.mxl$/i);
   if (movement) {

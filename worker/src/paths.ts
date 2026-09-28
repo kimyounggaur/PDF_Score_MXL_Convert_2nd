@@ -21,6 +21,14 @@ export function outputDir(jobId: string) {
   return path.join(jobDir(jobId), "out");
 }
 
+export function engineLogPath(jobId: string) {
+  return path.join(jobDir(jobId), "engine.log");
+}
+
+export function omrPath(jobId: string) {
+  return path.join(outputDir(jobId), "input.omr");
+}
+
 export function assertInside(parent: string, child: string) {
   const parentResolved = path.resolve(parent);
   const childResolved = path.resolve(child);
