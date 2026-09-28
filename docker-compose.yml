@@ -16,14 +16,15 @@ services:
 
   worker:
     build:
-      context: ./worker
+      context: .
+      dockerfile: worker/Dockerfile
       target: worker
     environment:
       REDIS_URL: redis://redis:6379
       DATA_DIR: /data
       AUDIVERIS_BIN: /opt/audiveris/bin/Audiveris
       CONVERSION_TIMEOUT_MS: "1200000"
-      JAVA_OPTS: "-Xmx4g -Djava.awt.headless=true"
+      JAVA_TOOL_OPTIONS: "-Xmx4g -Djava.awt.headless=true"
     volumes:
       - ./data:/data
     depends_on:
@@ -50,7 +51,8 @@ services:
 
   web:
     build:
-      context: ./web
+      context: .
+      dockerfile: web/Dockerfile
       target: dev
     environment:
       REDIS_URL: redis://redis:6379

@@ -3,7 +3,7 @@ set -euo pipefail
 
 IMAGE="${1:-pdf-score-mxl-worker:audiveris}"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PROJECT_DIR="$(cd "$ROOT_DIR/.." && pwd)"
+PROJECT_DIR="$ROOT_DIR"
 SAMPLE="$PROJECT_DIR/samples/simple.pdf"
 OUT_DIR="$PROJECT_DIR/.smoke-out"
 LOG_FILE="$OUT_DIR/audiveris.log"

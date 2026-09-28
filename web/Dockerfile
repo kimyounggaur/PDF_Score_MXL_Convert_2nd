@@ -1,25 +1,35 @@
-FROM node:22-bookworm-slim AS base
+# syntax=docker/dockerfile:1.7
+
+FROM node:22-bookworm-slim AS dependencies
 
 ENV NEXT_TELEMETRY_DISABLED=1
 WORKDIR /app
 
-COPY package.json ./
-RUN npm install
+RUN corepack enable
 
-COPY . .
-RUN chown -R node:node /app
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY web/package.json ./web/package.json
+COPY worker/package.json ./worker/package.json
+
+RUN pnpm install --frozen-lockfile --filter @pdf-score-mxl/web...
+
+FROM dependencies AS source
+
+COPY --chown=node:node web ./web
+WORKDIR /app/web
 
 USER node
 EXPOSE 3000
 
-FROM base AS dev
+FROM source AS dev
 
-CMD ["npm", "run", "dev"]
+CMD ["node", "node_modules/next/dist/bin/next", "dev"]
 
-FROM base AS build
+FROM source AS build
 
-USER node
-RUN npm run build
+USER root
+RUN pnpm run build \
+  && test -f .next/standalone/web/server.js
 
 FROM node:22-bookworm-slim AS production
 
@@ -27,11 +37,11 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 WORKDIR /app
 
-COPY --from=build --chown=node:node /app/.next/standalone ./
-COPY --from=build --chown=node:node /app/.next/static ./.next/static
-COPY --from=build --chown=node:node /app/public ./public
+COPY --from=build --chown=node:node /app/web/.next/standalone ./
+COPY --from=build --chown=node:node /app/web/.next/static ./web/.next/static
+COPY --from=build --chown=node:node /app/web/public ./web/public
 
 USER node
 EXPOSE 3000
 
-CMD ["node", "server.js"]
+CMD ["node", "web/server.js"]

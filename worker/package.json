@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "start": "node dist/worker.js",
+    "start": "node dist/src/worker.js",
     "dev": "tsx src/worker.ts",
     "test": "node --import tsx --test \"src/**/*.test.ts\"",
     "replay-progress": "tsx scripts/replay-progress.ts",

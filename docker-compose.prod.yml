@@ -19,7 +19,8 @@ services:
 
   web:
     build:
-      context: ./web
+      context: .
+      dockerfile: web/Dockerfile
       target: production
     environment:
       NODE_ENV: production

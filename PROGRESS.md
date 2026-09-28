@@ -23,7 +23,7 @@
 - [x] V2-4 - 결과 판정·표지 자동 복구·엔진 로그
 - [x] V2-5 - 서버와 일치하는 화면 상태
 - [x] V2-6 - 신뢰 가능한 E2E와 정확한 마디 수
-- [ ] V2-7 - 재현 가능한 빌드
+- [x] V2-7 - 재현 가능한 빌드
 - [ ] V2-8 - 운영 보안 설정
 - [ ] V2-9 - 관측·복구·작업 취소
 - [ ] V2-10 - VPS 실서버 배포
@@ -54,3 +54,4 @@
 - V2-4: 결과 파일·검증 우선 판정기, `.omr` 정상 쪽 1회 자동 복구, 전체 제한시간 공유, 스트리밍 `engine.log`, 30줄 실패 꼬리, OOM/NO_OUTPUT 분류, 제외 쪽 경고와 구조화 로그를 구현했다. 워커 단위 테스트 18개와 전체 타입 검사·워커 빌드가 통과했다. Docker가 없어 bad/cover/simple 실변환과 복구 마디 수 비교는 미실행이다.
 - V2-5: HMR에서도 하나만 유지되는 QueueEvents 허브, 초기/활성/진행/완료/실패 SSE 계약, 15초 대기 순번 갱신, 20초 무응답 뒤 5초 반복 폴링, 만료 카드, localStorage hydration 보호·24시간/30개 정리를 구현했다. 정상 업로드 제한은 검증 뒤에만 원자적으로 차감하고 검증 실패는 별도 30회 한도로 분리했다. web 단위 테스트 13개, 전체 타입 검사, Next build가 통과했다. Redis·Docker가 없어 실제 SSE 원문·오프라인 복구·레이트리밋 통합 실측은 미실행이다.
 - V2-6: `<measure(?=[\\s>])`만 집계하고 파트별 마디 수를 반환하도록 MXL 검증을 고쳤으며, 합성 MXL 단위 테스트로 `measure-numbering` 제외를 확인했다. E2E는 카드 범위의 엄격한 test ID, 실제 OSMD `.vf-notehead`, 정확한 오류 코드로 A~G 7개를 정의했다. 워커 22개 통과·2개 실MXL TODO, 웹 13개 통과, 전체 타입 검사, Playwright 7개 로드가 통과했다. Docker 부재로 실제 7개 E2E 실행과 버그 되돌림 실험은 미실행이다.
+- V2-7: Docker 빌드 컨텍스트를 저장소 루트로 통일하고 pnpm 11.7.0의 frozen lockfile·workspace filter 설치, 모노레포 standalone 실행 경로(`web/server.js`), Audiveris 버전 ARG·OCI 라벨, Gradle BuildKit 캐시, `JAVA_TOOL_OPTIONS=-Xmx4g`, 올바른 워커 시작 경로를 적용했다. 로컬 frozen 설치, 워커 단위 테스트 22개 통과·2개 TODO, 웹 단위 테스트 13개 통과, 전체 타입 검사·빌드, standalone `/api/health` 200 응답을 확인했다. Docker CLI가 없어 이미지 빌드·크기, Gradle 캐시 시간, 이미지 내부 버전, Audiveris 스모크와 JVM `Picked up JAVA_TOOL_OPTIONS` 로그는 미실행이다.
