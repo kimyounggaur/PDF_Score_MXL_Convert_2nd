@@ -69,6 +69,20 @@ test("cover failure requests one recovery with only normal target sheets", () =>
   );
 });
 
+test("쪽 범위 변환의 복구 후보는 처음 선택한 쪽 안에서만 고른다", () => {
+  assert.deepEqual(
+    classifyConversion({
+      ...base,
+      invalidSheets: [3],
+      targetSheets: [2, 3, 4, 5, 7],
+      omrExists: true,
+      noOutputSignal: true,
+      exitCode: 1,
+    }),
+    { kind: "recover", sheets: [2, 4, 5, 7] },
+  );
+});
+
 test("bad one-sheet input with no normal sheet is NO_OUTPUT", () => {
   assert.deepEqual(
     classifyConversion({

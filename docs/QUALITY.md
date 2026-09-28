@@ -48,3 +48,23 @@ MXL 검증기는 정확한 `<measure>` 시작 태그만 세고 `measuresPerPart`
 
 **현재 결정: 기본 엔진은 5.10.2로 유지하고 5.11.0 업그레이드는 보류한다.** Docker를 사용할 수 있는 환경과 사용 권리가 있는 실제 악보 5개 이상을 준비한 뒤, 같은 조건에서 파일마다 두 번씩 변환하고 실제 5.11.0 로그로 진행률·판정 테스트까지 통과해야 이 게이트를 다시 판단한다.
 
+## 쪽 범위·가사 언어 검증
+
+V2-15는 업로드 요청의 `pageRange`와 `language`를 서버에서 검증하고, 정규화한 `{ sheets, language }`를 `metadata.json`에 저장한다. 큐에는 계속 `{ jobId }`만 넣으며 워커가 metadata를 다시 검증한다. [Audiveris 공식 CLI 문서](https://audiveris.github.io/audiveris/_pages/guides/advanced/cli/)의 `-sheets` 목록 형식에 맞춰 선택 쪽을 각각의 argv로 전달하고, [공식 언어 문서](https://audiveris.github.io/audiveris/_pages/guides/main/languages/)의 복수 언어 표기대로 `kor+eng`를 언어 상수 값으로 전달한다. 현재 호스트에는 Audiveris 실행 파일이 없어 실제 5.10.2 프로세스의 인자 수신은 실행하지 못했고, argv 단위 테스트로 계약을 고정했다.
+
+| 검사 | 결과 |
+|---|---|
+| 쪽 범위 구문·실제 쪽수·중복 제거·최대 20쪽 | 통과 — web 단위/API 테스트 |
+| 21쪽 PDF의 1~20쪽 부분 선택 | 통과 — PDF·옵션 단위 테스트 |
+| 언어 허용 목록 `eng`, `kor`, `kor+eng` | 통과 — web/worker 단위 테스트 |
+| 구 metadata 기본값·잘못된 metadata 거부·재시도 보존 | 통과 — web/worker 단위 테스트 |
+| 선택 쪽 진행 분모·복구 후보·ETA·메트릭 | 통과 — web/worker 단위 테스트 |
+| 다중 파일에 같은 옵션 적용 | 통과 — 360px 모킹 브라우저에서 두 요청의 FormData 확인 |
+| `cover.pdf` 2~3쪽 실제 무복구 변환 | 미실행 — Docker/Redis/Audiveris 없음; Playwright 시나리오만 추가 |
+
+한국어 가사 비교에 필요한 사용 권리가 있는 `samples/real/` 악보가 현재 저장소에 없다. 따라서 수치를 추정하지 않고 다음 비교를 미실행으로 남긴다.
+
+| 한국어 가사 악보 | `eng`의 `<lyric><text>` 수·앞 10개 | `kor+eng`의 `<lyric><text>` 수·앞 10개 | 판정 |
+|---|---|---|---|
+| 준비된 실제 악보 없음 | 미실행 | 미실행 | 실제 악보와 엔진 런타임 준비 후 비교 필요 |
+

@@ -13,7 +13,7 @@
 - Audiveris는 오직 child_process.spawn으로 별도 프로세스 실행 (AGPL - Java API를 같은 프로세스에 링크 금지)
 - 변환 성공 판정은 종료코드가 아니라 out/*.mxl 파일 존재로 한다 (다악장이면 *.mvt1.mxl 등 여러 개 - 결과는 항상 파일 목록으로 다룬다)
 - Tesseract 언어 파일은 github.com/tesseract-ocr/tessdata 의 legacy 포함본만 사용한다. tessdata_fast/best와 apt 패키지는 LSTM 전용이라 Audiveris에서 동작하지 않는다. TESSDATA_PREFIX 환경변수로 지정한다.
-- 업로드 검증: %PDF- 매직바이트, <=30MB, <=20쪽(pdf-lib), 암호화 거부. 클라이언트 파일명은 신뢰하지 않는다 (저장은 서버 UUID로)
+- 업로드 검증: %PDF- 매직바이트, <=30MB, 암호화 거부. 전체 변환은 <=20쪽이고, 더 긴 PDF도 실제 쪽수 안에서 최대 20쪽을 선택하면 허용한다. 쪽 범위와 가사 언어는 서버와 워커가 각각 다시 검증한다. 클라이언트 파일명은 신뢰하지 않는다 (저장은 서버 UUID로)
 - 큐 페이로드에는 `{ jobId }`만 담는다. 파일 경로는 각 프로세스가 자기 DATA_DIR 환경변수로 계산한다: `<DATA_DIR>/jobs/<jobId>/` (컨테이너는 `/data`, 호스트 프로세스는 저장소의 `./data` - `./data`는 bind mount로 공유)
 - 사용자 대면 문구는 전부 한국어
 

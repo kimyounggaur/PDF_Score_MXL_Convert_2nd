@@ -10,10 +10,10 @@ import {
 } from "./metrics.js";
 
 test("uses target sheet count before the reported total", () => {
-  const result = metricResult({ durationMs: 9_000, targetSheets: [2, 4, 7], totalSheets: 99 });
+  const result = metricResult({ durationMs: 10_000, targetSheets: [2, 3, 4, 5, 7], totalSheets: 30 });
 
-  assert.equal(getProcessedPageCount(result), 3);
-  assert.equal(calculateSecondsPerPage(result), 3);
+  assert.equal(getProcessedPageCount(result), 5);
+  assert.equal(calculateSecondsPerPage(result), 2);
 });
 
 test("falls back to total sheets and then one valid page", () => {

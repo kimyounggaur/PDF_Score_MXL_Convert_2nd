@@ -5,6 +5,8 @@ export type ErrorCode =
   | "CORRUPT_PDF"
   | "ENCRYPTED_PDF"
   | "TOO_MANY_PAGES"
+  | "PAGE_RANGE_INVALID"
+  | "LANGUAGE_INVALID"
   | "JOB_NOT_FOUND"
   | "FILE_NOT_FOUND"
   | "QUEUE_FULL"
@@ -27,7 +29,9 @@ const MESSAGES: Record<ErrorCode, string> = {
   NOT_A_PDF: "PDF 파일만 업로드할 수 있습니다.",
   CORRUPT_PDF: "PDF를 읽을 수 없습니다. 파일이 손상되었는지 확인해 주세요.",
   ENCRYPTED_PDF: "보안이 설정된 PDF(열람 암호 또는 권한 제한)는 변환할 수 없습니다. 보안이 없는 원본 PDF로 다시 올려 주세요.",
-  TOO_MANY_PAGES: "20쪽 이하의 PDF만 변환할 수 있습니다. 파일을 나눠서 시도해 주세요.",
+  TOO_MANY_PAGES: "전체 변환은 20쪽까지 가능합니다. 20쪽 이하의 범위를 선택하거나 파일을 나눠 주세요.",
+  PAGE_RANGE_INVALID: "변환할 쪽을 1부터 실제 쪽수 사이에서 최대 20쪽까지 입력해 주세요. 예: 2-5, 7",
+  LANGUAGE_INVALID: "지원하지 않는 가사 언어입니다. 영어, 한국어 또는 한국어+영어를 선택해 주세요.",
   JOB_NOT_FOUND: "존재하지 않거나 만료된 작업입니다.",
   FILE_NOT_FOUND: "요청한 결과 파일을 찾을 수 없습니다.",
   QUEUE_FULL: "현재 대기열이 가득 찼습니다. 잠시 후 다시 시도해 주세요.",

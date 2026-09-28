@@ -1,5 +1,6 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
+import { normalizeStoredConversionOptions, type ConversionOptions } from "./conversion-options";
 import { errorMessage, normalizeFailureCode } from "./errors";
 import { compareResultNames } from "./filenames";
 import { getConversionQueue, getJob, type ConversionProgress, type ConversionResult, type ConversionWarning } from "./queue";
@@ -30,6 +31,7 @@ export type JobMetadata = {
   bytes: number;
   pages: number;
   createdAt: string;
+  options: ConversionOptions;
   [key: string]: unknown;
 };
 
@@ -113,7 +115,7 @@ export async function getJobStatus(jobId: string): Promise<JobStatus | null> {
     timing,
     estimate: estimateForJob({
       state,
-      pages: metadata?.pages ?? null,
+      pages: targetPageCountForMetadata(metadata),
       processedOn: job.processedOn ?? null,
       now: Date.now(),
       samples: estimateSamples,
@@ -175,12 +177,18 @@ export function parseJobMetadata(value: unknown): JobMetadata | null {
     return null;
   }
 
+  const options = normalizeStoredConversionOptions(candidate.options, candidate.pages);
+  if (!options) {
+    return null;
+  }
+
   return {
     ...candidate,
     originalName: candidate.originalName,
     bytes: candidate.bytes,
     pages: candidate.pages,
     createdAt: candidate.createdAt,
+    options,
   };
 }
 
@@ -203,6 +211,10 @@ export function metadataForRetry(metadata: JobMetadata, retryOf: string, created
     createdAt: createdAt.toISOString(),
     retryOf,
   };
+}
+
+export function targetPageCountForMetadata(metadata: JobMetadata | null) {
+  return metadata ? (metadata.options.sheets?.length ?? metadata.pages) : null;
 }
 
 export function timingForJob(

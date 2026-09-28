@@ -144,6 +144,28 @@ test("uses selected-sheet order as the progress denominator", () => {
   assert.deepEqual(tracker.getTargetSheets(), [2, 4]);
 });
 
+test("metadata에서 고른 2-5, 7쪽만 진행 분모와 invalid 후보로 사용한다", () => {
+  const selectedSheets = [2, 3, 4, 5, 7];
+  const tracker = new AudiverisProgressTracker(selectedSheets);
+
+  tracker.pushLine(totalLine(30));
+  tracker.pushLine(targetLine(selectedSheets));
+  assert.deepEqual(tracker.getTargetSheets(), selectedSheets);
+
+  assert.equal(tracker.pushLine(stageLine(1, "LOAD")), null, "선택하지 않은 쪽은 진행률에 포함하지 않는다");
+  tracker.pushLine("INFO [input#1] SheetStub 1194 | Sheet input#1 flagged as invalid.");
+  assert.deepEqual(tracker.getInvalidSheets(), [], "선택하지 않은 쪽은 복구 후보에도 포함하지 않는다");
+
+  const first = tracker.pushLine(stageLine(2, "LOAD"));
+  const last = tracker.pushLine(stageLine(7, "LOAD"));
+  assert.ok(first && last);
+  assert.deepEqual(first.progress.sheet, { current: 1, total: 5 });
+  assert.deepEqual(last.progress.sheet, { current: 5, total: 5 });
+
+  tracker.pushLine("INFO [input#3] SheetStub 1194 | Sheet input#3 flagged as invalid.");
+  assert.deepEqual(tracker.getInvalidSheets(), [3]);
+});
+
 test("seven-byte stream chunks produce the same result as whole lines", () => {
   const logLines = [
     totalLine(3),

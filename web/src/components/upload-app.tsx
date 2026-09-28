@@ -4,9 +4,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { FileUp, Info, Loader2, ShieldCheck, X } from "lucide-react";
 import { useDropzone, type FileRejection } from "react-dropzone";
 import type { StoredJob } from "@/lib/client-types";
+import { MAX_PAGE_RANGE_INPUT_LENGTH, parseConversionOptions } from "@/lib/conversion-options";
+import { errorMessage } from "@/lib/errors";
 import { deserializeStoredJobs, pruneStoredJobs, serializeStoredJobs, STORED_JOBS_KEY } from "@/lib/job-storage";
 import { dropRejectionMessage, cn } from "@/lib/ui";
-import { UploadError, uploadPdfWithXhr } from "@/lib/xhr-upload";
+import { UploadError, uploadPdfWithXhr, type UploadJobOptions, type UploadLanguage } from "@/lib/xhr-upload";
 import { useServiceStatus } from "@/hooks/use-service-status";
 import { Alert } from "./ui/alert";
 import { Button } from "./ui/button";
@@ -22,10 +24,12 @@ type UploadState = {
   phase: "transferring" | "verifying";
 };
 
+type PageSelectionMode = "all" | "custom";
+
 const UPLOAD_NOTICES = [
   "인쇄 악보 전용입니다. 손글씨 악보는 지원하지 않습니다.",
   "300DPI 이상의 선명한 스캔본을 권장합니다.",
-  "최대 30MB, 20쪽까지 변환할 수 있습니다.",
+  "파일당 최대 30MB이며, 한 작업에서 최대 20쪽을 선택해 변환할 수 있습니다.",
   "보안이 설정된 PDF(열람 암호 또는 권한 제한)는 변환할 수 없습니다. 보안이 없는 원본 PDF로 다시 올려 주세요.",
 ];
 
@@ -35,11 +39,22 @@ export function UploadApp() {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadState, setUploadState] = useState<UploadState | null>(null);
   const [isHydrated, setIsHydrated] = useState(false);
+  const [pageSelectionMode, setPageSelectionMode] = useState<PageSelectionMode>("all");
+  const [pageRange, setPageRange] = useState("");
+  const [pageRangeError, setPageRangeError] = useState<string | null>(null);
+  const [language, setLanguage] = useState<UploadLanguage>("eng");
   const batchSequenceRef = useRef(0);
   const activeBatchRef = useRef<{ id: number; controller: AbortController } | null>(null);
+  const pageRangeInputRef = useRef<HTMLInputElement | null>(null);
   const mountedRef = useRef(false);
   const { status: serviceStatus, isChecking: isCheckingService, isUnavailable, canUpload } = useServiceStatus();
   const clock = useSharedClock(jobs.length > 0);
+  const pageRangeSyntaxError =
+    pageSelectionMode === "custom" &&
+    !parseConversionOptions({ pageRange, language, pageCount: Number.MAX_SAFE_INTEGER }).ok
+      ? errorMessage("PAGE_RANGE_INVALID")
+      : null;
+  const displayedPageRangeError = pageRangeError ?? pageRangeSyntaxError;
 
   useEffect(() => {
     mountedRef.current = true;
@@ -85,6 +100,30 @@ export function UploadApp() {
       return;
     }
 
+    const preliminaryOptions = parseConversionOptions({
+      pageRange: pageSelectionMode === "custom" ? pageRange : undefined,
+      language,
+      // The browser cannot know a PDF's page count without reading it. This
+      // pass rejects only global syntax/count errors; the API checks bounds.
+      pageCount: Number.MAX_SAFE_INTEGER,
+    });
+    if (!preliminaryOptions.ok) {
+      const text = errorMessage(preliminaryOptions.code);
+      setMessage({ tone: "error", text });
+      if (preliminaryOptions.code === "PAGE_RANGE_INVALID") {
+        setPageRangeError(text);
+        window.requestAnimationFrame(() => pageRangeInputRef.current?.focus());
+      }
+      return;
+    }
+
+    // Freeze primitive form values before the first await so every file in
+    // this sequential batch is submitted with the exact same options.
+    const batchOptions: Readonly<UploadJobOptions> = Object.freeze({
+      pageRange: pageSelectionMode === "custom" ? pageRange : null,
+      language,
+    });
+
     const batchId = ++batchSequenceRef.current;
     const controller = new AbortController();
     activeBatchRef.current = { id: batchId, controller };
@@ -92,6 +131,7 @@ export function UploadApp() {
     setMessage(rejectedMessage ? { tone: "error", text: rejectedMessage } : null);
     let successCount = 0;
     const failures: string[] = [];
+    let hasPageRangeFailure = false;
 
     for (const [index, file] of files.slice(0, 5).entries()) {
       if (controller.signal.aborted) {
@@ -102,6 +142,7 @@ export function UploadApp() {
 
       try {
         const result = await uploadPdfWithXhr(file, {
+          ...batchOptions,
           signal: controller.signal,
           onProgress: ({ percent }) => {
             if (mountedRef.current && activeBatchRef.current?.id === batchId) {
@@ -133,6 +174,11 @@ export function UploadApp() {
           break;
         }
 
+        if (caught instanceof UploadError && caught.code === "PAGE_RANGE_INVALID") {
+          setPageRangeError(caught.message);
+          hasPageRangeFailure = true;
+        }
+
         const reason = caught instanceof Error ? caught.message : "업로드 중 문제가 발생했습니다. 다시 시도해 주세요.";
         failures.push(`${file.name}: ${reason}`);
       }
@@ -160,7 +206,11 @@ export function UploadApp() {
         text: successCount === 1 ? "업로드가 완료되어 변환 대기열에 등록했습니다." : `${successCount}개 파일을 변환 대기열에 등록했습니다.`,
       });
     }
-  }, []);
+
+    if (hasPageRangeFailure) {
+      window.requestAnimationFrame(() => pageRangeInputRef.current?.focus());
+    }
+  }, [language, pageRange, pageSelectionMode]);
 
   const onDrop = useCallback(
     (acceptedFiles: File[], fileRejections: FileRejection[]) => {
@@ -177,7 +227,7 @@ export function UploadApp() {
   const { getRootProps, getInputProps, isDragActive, open } = useDropzone({
     onDrop,
     noClick: true,
-    disabled: isUploading || !canUpload,
+    disabled: isUploading || !canUpload || pageRangeSyntaxError !== null,
     multiple: true,
     maxFiles: 5,
     maxSize: 30 * 1024 * 1024,
@@ -227,26 +277,148 @@ export function UploadApp() {
         <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem] lg:gap-8" aria-labelledby="upload-heading">
           <Card className="rounded-none border-[#BCC7D0] bg-white shadow-none">
             <CardContent className="p-0">
+              <div className="border-b border-[#BCC7D0] bg-[#F6F8FA] px-4 py-5 text-left sm:px-6 sm:py-6">
+                <div className="border-l-4 border-[#245C9E] pl-3">
+                  <h2 id="upload-heading" className="text-lg font-semibold tracking-[-0.01em] text-[#17232D] sm:text-xl">
+                    새 악보 등록
+                  </h2>
+                  <p className="mt-1 text-sm leading-6 text-[#596873]">PDF를 올리기 전에 변환 범위와 가사 인식 언어를 선택하세요.</p>
+                </div>
+
+                <div className="mt-5 grid min-w-0 gap-5 md:grid-cols-2 md:gap-6">
+                  <fieldset className="min-w-0" disabled={isUploading}>
+                    <legend className="mb-2 text-sm font-semibold text-[#17232D]">변환할 쪽</legend>
+                    <div className="grid grid-cols-2 gap-2">
+                      <label
+                        className={cn(
+                          "flex min-h-11 min-w-0 items-center gap-2 border px-3 py-2 text-sm font-semibold motion-safe:transition-colors",
+                          pageSelectionMode === "all"
+                            ? "border-[#245C9E] bg-[#EEF4FA] text-[#245C9E]"
+                            : "border-[#596873] bg-white text-[#17232D]",
+                          isUploading ? "cursor-not-allowed" : "cursor-pointer",
+                        )}
+                      >
+                        <input
+                          type="radio"
+                          name="pageSelectionMode"
+                          value="all"
+                          checked={pageSelectionMode === "all"}
+                          onChange={() => {
+                            setPageSelectionMode("all");
+                            setPageRangeError(null);
+                          }}
+                          className="h-4 w-4 shrink-0 accent-[#245C9E]"
+                          data-testid="page-mode-all"
+                        />
+                        전체
+                      </label>
+                      <label
+                        className={cn(
+                          "flex min-h-11 min-w-0 items-center gap-2 border px-3 py-2 text-sm font-semibold motion-safe:transition-colors",
+                          pageSelectionMode === "custom"
+                            ? "border-[#245C9E] bg-[#EEF4FA] text-[#245C9E]"
+                            : "border-[#596873] bg-white text-[#17232D]",
+                          isUploading ? "cursor-not-allowed" : "cursor-pointer",
+                        )}
+                      >
+                        <input
+                          type="radio"
+                          name="pageSelectionMode"
+                          value="custom"
+                          checked={pageSelectionMode === "custom"}
+                          onChange={() => setPageSelectionMode("custom")}
+                          className="h-4 w-4 shrink-0 accent-[#245C9E]"
+                          data-testid="page-mode-custom"
+                        />
+                        직접 입력
+                      </label>
+                    </div>
+
+                    {pageSelectionMode === "custom" ? (
+                      <div className="mt-3">
+                        <label htmlFor="page-range" className="mb-1.5 block text-sm font-medium text-[#596873]">
+                          쪽 범위
+                        </label>
+                        <input
+                          id="page-range"
+                          ref={pageRangeInputRef}
+                          name="pageRange"
+                          type="text"
+                          value={pageRange}
+                          onChange={(event) => {
+                            setPageRange(event.target.value);
+                            setPageRangeError(null);
+                          }}
+                          placeholder="예: 2-5, 7"
+                          autoComplete="off"
+                          maxLength={MAX_PAGE_RANGE_INPUT_LENGTH}
+                          aria-invalid={displayedPageRangeError !== null}
+                          aria-describedby={displayedPageRangeError ? "page-range-help page-range-error" : "page-range-help"}
+                          className="h-11 w-full min-w-0 border border-[#596873] bg-white px-3 text-sm text-[#17232D] placeholder:text-[#596873] disabled:cursor-not-allowed disabled:bg-[#E7ECEF]"
+                          data-testid="page-range-input"
+                        />
+                        <p id="page-range-help" className="mt-1.5 text-sm leading-6 text-[#596873]">
+                          쪽 번호와 범위를 쉼표로 구분하세요. 한 작업에서 최대 20쪽을 선택할 수 있습니다.
+                        </p>
+                        {displayedPageRangeError ? (
+                          <p id="page-range-error" className="mt-1.5 text-sm leading-6 text-[#B1304A]">
+                            {displayedPageRangeError}
+                          </p>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <p className="mt-3 text-sm leading-6 text-[#596873]">
+                        전체 PDF를 변환합니다. PDF가 20쪽을 넘으면 직접 입력으로 최대 20쪽을 선택하세요.
+                      </p>
+                    )}
+                  </fieldset>
+
+                  <div className="min-w-0">
+                    <label htmlFor="upload-language" className="mb-2 block text-sm font-semibold text-[#17232D]">
+                      가사 언어
+                    </label>
+                    <select
+                      id="upload-language"
+                      name="language"
+                      value={language}
+                      onChange={(event) => setLanguage(event.target.value as UploadLanguage)}
+                      disabled={isUploading}
+                      aria-describedby="language-help"
+                      className="h-11 w-full min-w-0 border border-[#596873] bg-white px-3 text-sm text-[#17232D] disabled:cursor-not-allowed disabled:bg-[#E7ECEF]"
+                      data-testid="upload-language"
+                    >
+                      <option value="eng">영어</option>
+                      <option value="kor">한국어</option>
+                      <option value="kor+eng">한국어 + 영어</option>
+                    </select>
+                    <p id="language-help" className="mt-1.5 text-sm leading-6 text-[#596873]">
+                      악보에 적힌 가사의 언어를 선택하면 문자 인식 정확도를 높이는 데 도움이 됩니다.
+                    </p>
+                  </div>
+                </div>
+
+                <p className="mt-5 border-l-2 border-[#245C9E] pl-3 text-sm leading-6 text-[#596873]" data-testid="batch-options-note">
+                  여러 PDF를 한 번에 올리면 선택한 쪽 범위와 가사 언어를 모든 파일에 동일하게 적용합니다.
+                </p>
+              </div>
+
               <div
                 {...getRootProps()}
                 className={cn(
                   "relative flex min-h-72 flex-col items-center justify-center border-l-4 px-4 py-10 text-center motion-safe:transition-colors sm:px-8 sm:py-12",
                   isDragActive ? "border-[#245C9E] bg-[#EEF4FA]" : "border-[#BCC7D0] bg-white",
-                  !canUpload && "cursor-not-allowed",
+                  (!canUpload || pageRangeSyntaxError !== null) && "cursor-not-allowed",
                 )}
               >
                 <input {...getInputProps({ "aria-label": "PDF 악보 파일 선택" })} />
-                <p id="upload-heading" className="absolute left-4 top-4 text-sm font-semibold text-[#245C9E] sm:left-6 sm:top-5">
-                  새 악보 등록
-                </p>
                 <div className="flex h-14 w-14 items-center justify-center border border-[#245C9E] bg-[#EEF4FA] text-[#245C9E]">
                   {isUploading ? <Loader2 className="h-7 w-7 motion-safe:animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <FileUp className="h-7 w-7" aria-hidden="true" />}
                 </div>
                 <p className="mt-5 text-lg font-semibold text-[#17232D] sm:text-xl">
                   {isDragActive ? "여기에 놓으면 업로드합니다" : "PDF 악보를 끌어다 놓으세요"}
                 </p>
-                <p className="mt-2 text-sm leading-6 text-[#596873]">한 번에 5개 · 파일당 최대 30MB, 20쪽</p>
-                <Button className="mt-6" onClick={open} disabled={isUploading || !canUpload}>
+                <p className="mt-2 text-sm leading-6 text-[#596873]">한 번에 5개 · 파일당 최대 30MB · 한 작업에서 최대 20쪽 선택</p>
+                <Button className="mt-6" onClick={open} disabled={isUploading || !canUpload || pageRangeSyntaxError !== null}>
                   <FileUp className="h-4 w-4" aria-hidden="true" />
                   {isCheckingService && !serviceStatus ? "서버 확인 중" : "PDF 선택"}
                 </Button>
@@ -299,7 +471,15 @@ export function UploadApp() {
           </aside>
         </section>
 
-        {message ? <Alert tone={message.tone}>{message.text}</Alert> : null}
+        {message ? (
+          <Alert
+            tone={message.tone}
+            role={message.tone === "error" ? "alert" : "status"}
+            aria-live={message.tone === "error" ? "assertive" : "polite"}
+          >
+            {message.text}
+          </Alert>
+        ) : null}
 
         <section className="space-y-5 border-t-2 border-[#17232D] pt-5" aria-labelledby="job-list-heading">
           <div className="flex flex-wrap items-center justify-between gap-4">

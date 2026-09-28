@@ -1,3 +1,5 @@
+import type { ConversionLanguage } from "./conversion-options";
+
 export type UploadProgress = {
   loaded: number;
   total: number;
@@ -6,6 +8,21 @@ export type UploadProgress = {
 
 export type UploadResult = {
   jobId: string;
+};
+
+export type UploadLanguage = ConversionLanguage;
+
+export type UploadJobOptions = {
+  /** null means every page; an empty string is a deliberate direct-entry value. */
+  pageRange: string | null;
+  language: UploadLanguage;
+};
+
+export type UploadPdfOptions = UploadJobOptions & {
+  signal?: AbortSignal;
+  onProgress?: (progress: UploadProgress) => void;
+  onTransferComplete?: () => void;
+  createRequest?: () => UploadRequest;
 };
 
 type UploadEventTarget = {
@@ -37,12 +54,7 @@ export class UploadError extends Error {
 
 export function uploadPdfWithXhr(
   file: File,
-  options: {
-    signal?: AbortSignal;
-    onProgress?: (progress: UploadProgress) => void;
-    onTransferComplete?: () => void;
-    createRequest?: () => UploadRequest;
-  } = {},
+  options: UploadPdfOptions,
 ): Promise<UploadResult> {
   const createRequest: () => UploadRequest = options.createRequest ?? (() => new XMLHttpRequest());
 
@@ -126,6 +138,10 @@ export function uploadPdfWithXhr(
     request.open("POST", "/api/jobs");
     const formData = new FormData();
     formData.append("file", file);
+    if (options.pageRange !== null) {
+      formData.append("pageRange", options.pageRange);
+    }
+    formData.append("language", options.language);
     request.send(formData);
   });
 }

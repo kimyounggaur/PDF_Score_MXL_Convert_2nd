@@ -4,8 +4,10 @@ import { mkdir, readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { finished } from "node:stream/promises";
 import type { Job } from "bullmq";
+import { buildInitialArguments } from "./audiveris-args.js";
 import { EngineSignalCollector, classifyConversion, type EngineSignals } from "./classify.js";
 import { getAudiverisBin, getConversionTimeoutMs } from "./config.js";
+import { InvalidJobOptionsError, readJobOptions } from "./job-options.js";
 import { engineLogPath, inputPdfPath, omrPath, outputDir } from "./paths.js";
 import { AudiverisProgressTracker, LineBuffer, ProgressUpdateThrottler } from "./progress.js";
 import type {
@@ -48,9 +50,15 @@ export async function runAudiverisConversion(
   const inputPath = inputPdfPath(jobId);
   const savedOmrPath = omrPath(jobId);
 
+  if (signal?.aborted) {
+    throw new ConversionError("CANCELLED");
+  }
+
+  const conversionOptions = await loadJobOptions(jobId);
+
   await mkdir(outDir, { recursive: true });
 
-  const progressTracker = new AudiverisProgressTracker();
+  const progressTracker = new AudiverisProgressTracker(conversionOptions.sheets ?? undefined);
   await job.updateProgress(progressTracker.getProgress());
 
   const progressPublisher = new ProgressUpdateThrottler(async (progress) => {
@@ -82,7 +90,7 @@ export async function runAudiverisConversion(
 
   try {
     lastRun = await runEngineProcess({
-      args: initialArguments(outDir, inputPath),
+      args: buildInitialArguments(outDir, inputPath, conversionOptions),
       timeoutMs: remainingTime(deadline),
       engineLog,
       consumeLine,
@@ -226,20 +234,6 @@ export async function runAudiverisConversion(
   }
 }
 
-function initialArguments(outDir: string, inputPath: string) {
-  return [
-    "-batch",
-    "-export",
-    "-save",
-    "-output",
-    outDir,
-    "-constant",
-    "org.audiveris.omr.text.Language.defaultSpecification=eng",
-    "--",
-    inputPath,
-  ];
-}
-
 function recoveryArguments(sheets: number[], savedOmrPath: string) {
   return [
     "-batch",
@@ -249,6 +243,17 @@ function recoveryArguments(sheets: number[], savedOmrPath: string) {
     "--",
     savedOmrPath,
   ];
+}
+
+async function loadJobOptions(jobId: string) {
+  try {
+    return await readJobOptions(jobId);
+  } catch (error) {
+    throw new ConversionError(
+      "ENGINE_ERROR",
+      error instanceof InvalidJobOptionsError ? error.message : "INVALID_JOB_OPTIONS",
+    );
+  }
 }
 
 async function runEngineProcess(options: {

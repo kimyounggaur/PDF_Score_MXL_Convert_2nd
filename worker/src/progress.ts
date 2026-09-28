@@ -43,7 +43,8 @@ const EXPORTED_LINE = /exported to .+\.mxl\s*$/i;
  */
 export class AudiverisProgressTracker {
   private totalSheets: number | null = null;
-  private targetSheets: number[] = [];
+  private targetSheets: number[];
+  private readonly configuredTargetSheets: number[] | null;
   private readonly invalidSheets = new Set<number>();
   private currentSourceSheet: number | null = null;
   private lastCompletedStep = -1;
@@ -52,6 +53,11 @@ export class AudiverisProgressTracker {
     stage: "starting",
     sheet: null,
   };
+
+  constructor(targetSheets?: readonly number[]) {
+    this.configuredTargetSheets = targetSheets ? [...targetSheets] : null;
+    this.targetSheets = this.configuredTargetSheets ? [...this.configuredTargetSheets] : [];
+  }
 
   pushLine(line: string): ProgressUpdate | null {
     const totalMatch = line.match(TOTAL_SHEETS_LINE);
@@ -72,7 +78,7 @@ export class AudiverisProgressTracker {
         .map((match) => Number(match[1]))
         .filter((sheet, index, values) => Number.isSafeInteger(sheet) && sheet > 0 && values.indexOf(sheet) === index);
 
-      if (targets.length > 0) {
+      if (targets.length > 0 && this.configuredTargetSheets === null) {
         this.targetSheets = targets;
       }
       return null;
@@ -81,7 +87,10 @@ export class AudiverisProgressTracker {
     const invalidMatch = line.match(INVALID_SHEET_LINE);
     if (invalidMatch) {
       const invalidSheet = this.resolveSheetNumber(invalidMatch[1]);
-      if (invalidSheet !== null) {
+      if (
+        invalidSheet !== null &&
+        (this.targetSheets.length === 0 || this.targetSheets.includes(invalidSheet))
+      ) {
         this.invalidSheets.add(invalidSheet);
       }
       return null;

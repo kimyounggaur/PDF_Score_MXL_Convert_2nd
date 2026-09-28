@@ -70,6 +70,18 @@ test("D. cover.pdf는 1쪽 제외 경고와 실제 악보 미리보기를 제공
   await openPreviewAndExpectNotes(card);
 });
 
+test("D-2. cover.pdf의 2-3쪽만 고르면 제외 경고 없이 바로 완료된다", async ({ page }) => {
+  await page.goto("/");
+  await waitForUploadReady(page);
+  await page.getByTestId("page-mode-custom").check();
+  await page.getByTestId("page-range-input").fill("2-3");
+  const card = await uploadPdf(page, "cover.pdf");
+
+  await expectCompleted(card);
+  await expect(card.getByTestId("job-warning")).toHaveCount(0);
+  await openPreviewAndExpectNotes(card);
+});
+
 test("E. 연속 두 작업에서 두 번째 작업은 대기 순번을 거쳐 완료된다", async ({ page }) => {
   await page.goto("/");
   const firstCard = await uploadPdf(page, "simple.pdf");
@@ -110,7 +122,7 @@ test("G. API는 21쪽 PDF와 존재하지 않는 작업을 정확한 코드로 �
   expect(await tooManyPages.json()).toEqual({
     error: {
       code: "TOO_MANY_PAGES",
-      message: "20쪽 이하의 PDF만 변환할 수 있습니다. 파일을 나눠서 시도해 주세요.",
+      message: "전체 변환은 20쪽까지 가능합니다. 20쪽 이하의 범위를 선택하거나 파일을 나눠 주세요.",
     },
   });
 

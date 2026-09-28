@@ -1,6 +1,7 @@
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuidv4 } from "uuid";
+import { parseConversionOptions } from "@/lib/conversion-options";
 import { MAX_UPLOAD_BYTES } from "@/lib/env";
 import { jsonError } from "@/lib/api-response";
 import { sanitizeFileName } from "@/lib/filenames";
@@ -12,6 +13,10 @@ import { getDiskFreeBytes, MINIMUM_DISK_FREE_BYTES, STATUS_QUERY_TIMEOUT_MS } fr
 import { withTimeout } from "@/lib/timeouts";
 
 export const runtime = "nodejs";
+
+// Keep the cheap Content-Length guard without rejecting a valid 30 MiB file
+// merely because multipart boundaries and the small option fields add bytes.
+const MAX_MULTIPART_OVERHEAD_BYTES = 64 * 1024;
 
 export async function POST(request: NextRequest) {
   const ip = requestIp(request);
@@ -30,22 +35,41 @@ export async function POST(request: NextRequest) {
     }
 
     const contentLength = Number(request.headers.get("content-length") ?? 0);
-    if (contentLength > MAX_UPLOAD_BYTES) {
+    if (
+      Number.isFinite(contentLength) &&
+      contentLength > MAX_UPLOAD_BYTES + MAX_MULTIPART_OVERHEAD_BYTES
+    ) {
       return jsonError("FILE_TOO_LARGE", 413);
     }
 
     const formData = await request.formData();
-    const file = formData.get("file");
+    const fileValues = formData.getAll("file");
+    const pageRangeValues = formData.getAll("pageRange");
+    const languageValues = formData.getAll("language");
+    const file = fileValues.length === 1 ? fileValues[0] : undefined;
+    const pageRange = singleFormValue(pageRangeValues);
+    const language = singleFormValue(languageValues);
 
     if (!(file instanceof File)) {
       return jsonError("MISSING_FILE");
     }
 
     const bytes = new Uint8Array(await file.arrayBuffer());
-    const validation = await validatePdf(bytes);
+    const validation = await validatePdf(bytes, {
+      allowMoreThanMaxPages: pageRangeValues.length > 0,
+    });
 
     if (!validation.ok) {
       return jsonError(validation.code, validation.status ?? 400);
+    }
+
+    const conversionOptions = parseConversionOptions({
+      pageRange,
+      language,
+      pageCount: validation.pageCount,
+    });
+    if (!conversionOptions.ok) {
+      return jsonError(conversionOptions.code);
     }
 
     const queue = getConversionQueue();
@@ -90,6 +114,7 @@ export async function POST(request: NextRequest) {
           bytes: bytes.byteLength,
           pages: validation.pageCount,
           createdAt: new Date().toISOString(),
+          options: conversionOptions.options,
         },
         null,
         2,
@@ -135,6 +160,14 @@ export async function POST(request: NextRequest) {
 
     return jsonError(isStorageCapacityError(error) ? "STORAGE_FULL" : "SERVICE_UNAVAILABLE", 503);
   }
+}
+
+function singleFormValue(values: FormDataEntryValue[]): unknown {
+  if (values.length === 0) {
+    return undefined;
+  }
+
+  return values.length === 1 ? values[0] : values;
 }
 
 function isStorageCapacityError(error: unknown) {

@@ -17,6 +17,10 @@ export function inputPdfPath(jobId: string) {
   return path.join(jobDir(jobId), "input.pdf");
 }
 
+export function metadataPath(jobId: string) {
+  return path.join(jobDir(jobId), "metadata.json");
+}
+
 export function outputDir(jobId: string) {
   return path.join(jobDir(jobId), "out");
 }

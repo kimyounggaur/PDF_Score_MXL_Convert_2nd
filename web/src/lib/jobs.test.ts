@@ -11,6 +11,7 @@ import {
   progressForJobState,
   publicJobMetadata,
   queuePositionFromWaitingJobs,
+  targetPageCountForMetadata,
   timingForJob,
 } from "./jobs";
 
@@ -49,6 +50,7 @@ test("metadata는 런타임 검증 뒤 확장 필드를 보존하고 공개 필�
 
   assert.ok(metadata);
   assert.equal(metadata.retryOf, "old-job");
+  assert.deepEqual(metadata.options, { sheets: null, language: "eng" });
   assert.deepEqual(publicJobMetadata(metadata), {
     originalName: "한글 악보.pdf",
     bytes: 12_345,
@@ -85,6 +87,7 @@ test("재시도 metadata는 확장 필드를 보존하고 생성 시각과 부�
     createdAt: "2026-09-20T00:00:00.000Z",
     pageRange: "2-3",
     retryOf: "grandparent",
+    options: { sheets: [2], language: "kor+eng" },
   });
   assert.ok(metadata);
 
@@ -95,7 +98,37 @@ test("재시도 metadata는 확장 필드를 보존하고 생성 시각과 부�
     createdAt: "2026-09-28T05:00:00.000Z",
     pageRange: "2-3",
     retryOf: "parent",
+    options: { sheets: [2], language: "kor+eng" },
   });
+});
+
+test("ETA 대상 쪽수는 선택 쪽 수를 우선하고 공개 metadata 쪽수는 전체를 유지한다", () => {
+  const selected = parseJobMetadata({
+    originalName: "score.pdf",
+    bytes: 100,
+    pages: 30,
+    createdAt: "2026-09-28T00:00:00.000Z",
+    options: { sheets: [2, 4, 8], language: "eng" },
+  });
+  assert.ok(selected);
+
+  assert.equal(targetPageCountForMetadata(selected), 3);
+  assert.deepEqual(publicJobMetadata(selected), {
+    originalName: "score.pdf",
+    bytes: 100,
+    pages: 30,
+    createdAt: "2026-09-28T00:00:00.000Z",
+  });
+
+  const allPages = parseJobMetadata({
+    originalName: "score.pdf",
+    bytes: 100,
+    pages: 12,
+    createdAt: "2026-09-28T00:00:00.000Z",
+  });
+  assert.ok(allPages);
+  assert.equal(targetPageCountForMetadata(allPages), 12);
+  assert.equal(targetPageCountForMetadata(null), null);
 });
 
 test("BullMQ 타임스탬프로 생성·시작·종료·경과 시간을 계산한다", () => {

@@ -6,7 +6,10 @@ export type PdfValidationResult =
   | { ok: true; pageCount: number }
   | { ok: false; code: ErrorCode; status?: number };
 
-export async function validatePdf(bytes: Uint8Array): Promise<PdfValidationResult> {
+export async function validatePdf(
+  bytes: Uint8Array,
+  { allowMoreThanMaxPages = false }: { allowMoreThanMaxPages?: boolean } = {},
+): Promise<PdfValidationResult> {
   if (bytes.byteLength > MAX_UPLOAD_BYTES) {
     return { ok: false, code: "FILE_TOO_LARGE", status: 413 };
   }
@@ -28,7 +31,11 @@ export async function validatePdf(bytes: Uint8Array): Promise<PdfValidationResul
     }
 
     const pageCount = doc.getPageCount();
-    if (pageCount > MAX_UPLOAD_PAGES) {
+    if (pageCount < 1) {
+      return { ok: false, code: "CORRUPT_PDF" };
+    }
+
+    if (!allowMoreThanMaxPages && pageCount > MAX_UPLOAD_PAGES) {
       return { ok: false, code: "TOO_MANY_PAGES" };
     }
 
