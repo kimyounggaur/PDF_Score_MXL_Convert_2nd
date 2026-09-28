@@ -256,7 +256,14 @@ export function JobCard({
                     {isPreviewOpen ? "미리보기 닫기" : "미리보기"}
                   </Button>
                 </div>
-                {isPreviewOpen ? <ScorePreview jobId={job.jobId} files={status.files} /> : null}
+                {isPreviewOpen ? (
+                  <ScorePreview
+                    jobId={job.jobId}
+                    files={status.files}
+                    sourcePages={status.meta?.pages ?? 1}
+                    warnings={status.warnings}
+                  />
+                ) : null}
               </div>
             ) : null}
 

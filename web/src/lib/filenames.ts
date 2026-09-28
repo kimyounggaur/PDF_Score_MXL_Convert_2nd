@@ -47,6 +47,14 @@ export function compareResultNames(left: string, right: string) {
 }
 
 export function attachmentContentDisposition(fileName: string) {
+  return contentDisposition("attachment", fileName);
+}
+
+export function inlineContentDisposition(fileName: string) {
+  return contentDisposition("inline", fileName);
+}
+
+function contentDisposition(disposition: "attachment" | "inline", fileName: string) {
   const fallback = fileName
     .replace(/[^\x20-\x7E]/g, "_")
     .replace(/["\\]/g, "_");
@@ -54,6 +62,6 @@ export function attachmentContentDisposition(fileName: string) {
     `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
   );
 
-  return `attachment; filename="${fallback}"; filename*=UTF-8''${encoded}`;
+  return `${disposition}; filename="${fallback}"; filename*=UTF-8''${encoded}`;
 }
 

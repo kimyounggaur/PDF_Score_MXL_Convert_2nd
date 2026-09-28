@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { JobFile, JobProgress, JobStatus, JobWarning } from "@/lib/client-types";
 import { failedEventDisposition } from "@/lib/client-status";
+import { normalizeResultFiles } from "@/lib/result-files";
 
 const SSE_INACTIVITY_MS = 20_000;
 const POLL_INTERVAL_MS = 5_000;
@@ -236,8 +237,8 @@ export function useJobStatus(jobId: string) {
       });
 
       source.addEventListener("done", (event) => {
-        const data = parseEventData(event);
-        if (disposed || !isDoneEventData(data)) {
+        const data = normalizeDoneEventData(parseEventData(event));
+        if (disposed || !data) {
           if (!disposed) {
             handleMalformedEvent();
           }
@@ -338,6 +339,7 @@ function normalizeJobStatus(status: JobStatus): JobStatus {
     meta: status.meta ?? null,
     timing: status.timing ?? null,
     estimate: status.estimate ?? null,
+    files: normalizeResultFiles(status.files),
     warnings: Array.isArray(status.warnings) ? status.warnings : [],
   };
 }
@@ -383,8 +385,21 @@ function isJobProgress(value: unknown): value is JobProgress {
   return typeof progress.pct === "number" && typeof progress.stage === "string";
 }
 
-function isDoneEventData(value: unknown): value is DoneEventData {
-  return typeof value === "object" && value !== null && "files" in value && Array.isArray((value as { files: unknown }).files);
+function normalizeDoneEventData(value: unknown): DoneEventData | null {
+  if (typeof value !== "object" || value === null || !("files" in value)) {
+    return null;
+  }
+
+  const result = value as { files: unknown; warnings?: unknown };
+  const files = normalizeResultFiles(result.files);
+  if (!files) {
+    return null;
+  }
+
+  return {
+    files,
+    warnings: Array.isArray(result.warnings) ? (result.warnings as JobWarning[]) : undefined,
+  };
 }
 
 function isFailedEventData(value: unknown): value is FailedEventData {

@@ -2,9 +2,10 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { errorMessage, normalizeFailureCode } from "./errors";
 import { compareResultNames } from "./filenames";
-import { getConversionQueue, getJob, type ConversionFile, type ConversionProgress, type ConversionResult, type ConversionWarning } from "./queue";
+import { getConversionQueue, getJob, type ConversionProgress, type ConversionResult, type ConversionWarning } from "./queue";
 import { metadataPath, outputDir } from "./paths";
 import { getRedisClient } from "./redis";
+import { normalizeResultFiles, type ResultFile } from "./result-files";
 import { withTimeout } from "./timeouts";
 
 export const SECONDS_PER_PAGE_REDIS_KEY = "conversion:seconds-per-page:v1";
@@ -15,7 +16,7 @@ const ESTIMATE_QUERY_TIMEOUT_MS = 250;
 export type JobStatus = {
   status: "queued" | "active" | "completed" | "failed";
   progress: ConversionProgress | null;
-  files: ConversionFile[] | null;
+  files: ResultFile[] | null;
   warnings: ConversionWarning[];
   error: { code: string; message: string } | null;
   queuePosition: number | null;
@@ -60,10 +61,11 @@ export async function getJobStatus(jobId: string): Promise<JobStatus | null> {
 
   if (state === "completed") {
     const returnValue = job.returnvalue as ConversionResult | undefined;
+    const returnedFiles = normalizeResultFiles(returnValue?.files);
     return {
       status: "completed",
       progress: { pct: 100, stage: "completed", sheet: null },
-      files: returnValue?.files ?? (await listOutputFiles(jobId)),
+      files: returnedFiles ?? (await listOutputFiles(jobId)),
       warnings: returnValue?.warnings ?? [],
       error: null,
       queuePosition: null,
@@ -119,7 +121,7 @@ export async function getJobStatus(jobId: string): Promise<JobStatus | null> {
   };
 }
 
-export async function listOutputFiles(jobId: string): Promise<ConversionFile[]> {
+export async function listOutputFiles(jobId: string): Promise<ResultFile[]> {
   const outDir = outputDir(jobId);
   let entries: string[];
 
@@ -138,6 +140,8 @@ export async function listOutputFiles(jobId: string): Promise<ConversionFile[]> 
         return {
           name,
           bytes: fileStat.size,
+          measureCount: null,
+          measuresPerPart: null,
         };
       }),
   );

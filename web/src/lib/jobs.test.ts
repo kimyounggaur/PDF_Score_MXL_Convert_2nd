@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import test from "node:test";
 import {
   estimateForJob,
+  listOutputFiles,
   metadataForRetry,
   parseJobMetadata,
   progressForJobState,
@@ -111,6 +115,35 @@ test("BullMQ 타임스탬프로 생성·시작·종료·경과 시간을 계산�
     finishedAt: null,
     elapsedMs: 4_000,
   });
+});
+
+test("파일시스템 fallback 결과는 알 수 없는 마디 요약을 null로 표시한다", async (t) => {
+  const dataDir = await mkdtemp(path.join(tmpdir(), "web-output-summary-"));
+  const previousDataDir = process.env.DATA_DIR;
+  const jobId = "123e4567-e89b-42d3-a456-426614174000";
+  const outDir = path.join(dataDir, "jobs", jobId, "out");
+
+  process.env.DATA_DIR = dataDir;
+  t.after(async () => {
+    if (previousDataDir === undefined) {
+      delete process.env.DATA_DIR;
+    } else {
+      process.env.DATA_DIR = previousDataDir;
+    }
+    await rm(dataDir, { recursive: true, force: true });
+  });
+
+  await mkdir(outDir, { recursive: true });
+  await writeFile(path.join(outDir, "input.mxl"), "mxl");
+
+  assert.deepEqual(await listOutputFiles(jobId), [
+    {
+      name: "input.mxl",
+      bytes: 3,
+      measureCount: null,
+      measuresPerPart: null,
+    },
+  ]);
 });
 
 test("ETA는 최근 양수 표본이 3개 이상일 때만 계산한다", () => {

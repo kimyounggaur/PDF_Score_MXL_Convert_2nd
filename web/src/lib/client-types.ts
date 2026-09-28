@@ -1,4 +1,5 @@
 import type { ErrorCode } from "./errors";
+import type { ResultFile } from "./result-files";
 
 export type JobProgress = {
   pct: number;
@@ -6,10 +7,7 @@ export type JobProgress = {
   sheet: { current: number; total: number } | null;
 };
 
-export type JobFile = {
-  name: string;
-  bytes: number;
-};
+export type JobFile = ResultFile;
 
 export type JobWarning = {
   code: "SKIPPED_PAGES";

@@ -16,6 +16,8 @@ export type ConversionProgress = {
 export type ConversionFile = {
   name: string;
   bytes: number;
+  measureCount: number;
+  measuresPerPart: Record<string, number>;
 };
 
 export type ConversionWarning = {

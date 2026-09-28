@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { attachmentContentDisposition, compareResultNames, downloadName, movementNumberForResult } from "./filenames";
+import { attachmentContentDisposition, compareResultNames, downloadName, inlineContentDisposition, movementNumberForResult } from "./filenames";
 
 test("단일 결과는 엔진 파일명 대신 원본 PDF 이름을 쓴다", () => {
   assert.equal(downloadName("봄 노래.pdf", "input.mxl"), "봄 노래.mxl");
@@ -43,6 +43,18 @@ test("Content-Disposition은 ASCII 대체명과 RFC 5987 UTF-8 이름을 함께 
     attachmentContentDisposition("한글 O'Brien (1악장).mxl"),
     "attachment; filename=\"__ O'Brien (1__).mxl\"; filename*=UTF-8''%ED%95%9C%EA%B8%80%20O%27Brien%20%281%EC%95%85%EC%9E%A5%29.mxl",
   );
+});
+
+test("원본 PDF의 inline Content-Disposition도 안전한 대체명과 UTF-8 이름을 함께 보낸다", () => {
+  assert.equal(
+    inlineContentDisposition("한글 악보.pdf"),
+    "inline; filename=\"__ __.pdf\"; filename*=UTF-8''%ED%95%9C%EA%B8%80%20%EC%95%85%EB%B3%B4.pdf",
+  );
+
+  const hostile = inlineContentDisposition("score\"\r\nX-Bad: yes.pdf");
+  assert.equal(hostile.includes("\r"), false);
+  assert.equal(hostile.includes("\n"), false);
+  assert.match(hostile, /^inline; filename="[\x20-\x7E]+"; filename\*=UTF-8''/);
 });
 
 test("긴 이름도 .mxl 확장자를 유지한다", () => {

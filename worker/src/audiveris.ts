@@ -17,7 +17,7 @@ import type {
   ConversionWarning,
 } from "./types.js";
 import { ConversionError } from "./types.js";
-import { validateMxl } from "./validate-mxl.js";
+import { validateMxl, type MxlValidationResult } from "./validate-mxl.js";
 
 const ENGINE_TAIL_LINES = 30;
 
@@ -354,7 +354,10 @@ async function runEngineProcess(options: {
   });
 }
 
-async function inspectOutputs(outDir: string): Promise<InspectedOutputs> {
+export async function inspectOutputs(
+  outDir: string,
+  validate: (filePath: string) => Promise<MxlValidationResult> = validateMxl,
+): Promise<InspectedOutputs> {
   const names = (await readdir(outDir))
     .filter((name) => name.toLowerCase().endsWith(".mxl"))
     .sort(compareOutputFileNames);
@@ -369,11 +372,18 @@ async function inspectOutputs(outDir: string): Promise<InspectedOutputs> {
       continue;
     }
 
-    files.push({ name, bytes: fileStat.size });
-    const validation = await validateMxl(fullPath);
+    const validation = await validate(fullPath);
     if (!validation.ok) {
       invalidReasons.push(`${name}: ${validation.reason}`);
+      continue;
     }
+
+    files.push({
+      name,
+      bytes: fileStat.size,
+      measureCount: validation.measureCount,
+      measuresPerPart: validation.measuresPerPart,
+    });
   }
 
   return {
