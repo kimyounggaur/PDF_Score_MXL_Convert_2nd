@@ -34,3 +34,29 @@
 
 - 매 STEP 시작: CLAUDE.md와 PROGRESS.md를 먼저 읽는다.
 - 매 STEP 종료: 검증 증거 제시 -> PROGRESS.md 갱신 -> 커밋
+
+## 실측으로 확인된 Audiveris 동작 (docs/IMPROVEMENT_V2.md 부록 A·B)
+
+- 진행 로그: `INFO  [input#<쪽>]  StepMonitoring 98 | <단계>`. 1쪽짜리 문서는 `[input]`(쪽 번호 없음).
+  진행률은 이 줄과 쪽 번호로만 계산한다. 다른 줄에 섞인 단어(PAGE, STEMS 등)로 판단하지 않는다.
+- 전체 쪽수: `<N> sheets in <경로>` (1쪽이면 `1 sheet in`). 처리 대상 쪽: `Book reaching PAGE on sheets:[#1#2]`.
+- 악보가 아닌 쪽: `No system found` → `Sheet input#<쪽> flagged as invalid.`
+- invalid 쪽이 하나라도 있으면 전체 내보내기가 실패한다(5.10.2·5.11.0 동일):
+  `Could not export since transcription did not complete successfully` → `Exit forced. Failure` → 종료코드 1, .mxl 없음.
+- 복구: `-save`로 저장된 `out/input.omr`에서 정상 쪽만 다시 내보낸다:
+  `Audiveris -batch -export -sheets 2 3 -- <out>/input.omr` → `out/input.mxl` (약 6초, -output과 관계없이 .omr 옆에 생성).
+  그래서 `-save`는 유지한다.
+- 성공: `Score input exported to <out>/input.mxl`, 종료코드 0. 종료코드는 참고용이고 판정은 결과 파일로 한다.
+- MXL 안의 `<source>`와 `source-file`에 서버의 입력 파일 경로가 기록된다.
+- OCR 언어 확인 줄: `Installed OCR languages: eng,kor`.
+- JVM 옵션은 V2-7부터 `JAVA_TOOL_OPTIONS`로 준다 (로그 첫 줄 `Picked up JAVA_TOOL_OPTIONS`로 적용 확인).
+
+## 품질 규칙 (2차 개선)
+
+- "완료"는 증거(명령 출력 원문, 테스트 결과, 스크린샷)와 함께만 보고한다. 실행하지 못한 검증은 "미실행"으로 적는다.
+- 버그를 고칠 때는 먼저 실패하는 테스트를 만들고, 고친 뒤 통과를 보여준다.
+- 단위 테스트: Node 내장 테스트 러너 + tsx. worker에서 `node --import tsx --test "src/**/*.test.ts"`.
+  web에 tsx가 필요하면 추가 전에 묻는다.
+- 엔진 로그 시험 자료: `worker/test/fixtures/audiveris/*.log`. 진행률·판정 로직은 이 파일로 시험한다.
+- 작업 브랜치는 `v2`. main 병합은 사용자 승인 후에만.
+- samples/ 아래의 PDF(특히 실제 악보)는 커밋하지 않는다.

@@ -13,7 +13,8 @@ test-results/
 .env*
 !.env.example
 
-samples/*.pdf
+# 권리가 있는 실제 악보가 저장소에 올라가지 않도록 모든 하위 폴더의 PDF를 제외한다.
+samples/**/*.pdf
 !samples/.gitkeep
 
 .vercel/
