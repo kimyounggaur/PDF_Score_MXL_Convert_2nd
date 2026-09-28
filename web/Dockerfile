@@ -35,6 +35,7 @@ FROM node:22-bookworm-slim AS production
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV HOSTNAME=0.0.0.0
 WORKDIR /app
 
 COPY --from=build --chown=node:node /app/web/.next/standalone ./

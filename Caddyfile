@@ -3,6 +3,16 @@
 		max_size 35MB
 	}
 
+	header {
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		X-Frame-Options "SAMEORIGIN"
+		-Server
+	}
+
+	@not_localhost not host localhost
+	header @not_localhost Strict-Transport-Security "max-age=31536000"
+
 	reverse_proxy web:3000
 }
 

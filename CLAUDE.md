@@ -20,6 +20,9 @@
 ## 명령어
 
 - 개발(전체): `docker compose up --build`
+  - Compose가 `docker-compose.override.yml`을 자동으로 합쳐 web 3000번과 localhost의 Redis 6379번을 개발용으로 연다.
+- 운영: `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build`
+  - `-f`로 파일을 명시해 개발용 override를 합치지 않는다. 호스트에는 Caddy의 80/443만 공개한다.
 - 웹만 로컬: `cd web && npm run dev`
   - `REDIS_URL=redis://localhost:6379`
   - `DATA_DIR=<저장소 루트>/data`
@@ -29,6 +32,12 @@
 - E2E 테스트: `cd web && RATE_LIMIT_DISABLED=1 npx playwright test`
 - 품질 코퍼스: `cd worker && REDIS_URL=redis://localhost:6379 DATA_DIR=../data npm run corpus`
 - 테스트: 각 STEP에서 추가
+
+## 배포 보안
+
+- Docker가 공개한 포트는 UFW 규칙을 우회할 수 있다. 운영 compose에 web 3000번과 Redis 6379번 포트를 추가하지 말고 Caddy 80/443만 공개한다.
+- 운영 Next standalone은 `HOSTNAME=0.0.0.0`으로 바인딩한다. 그래야 컨테이너 내 `127.0.0.1:3000` 헬스체크와 Caddy 의존성이 정상 동작한다.
+- Vercel 단독 배포는 지원하지 않는다. 이 서비스는 Redis 큐, 상주 Audiveris 워커, web/worker 공유 디스크와 장시간 작업이 모두 필요하다.
 
 ## 진행 규칙
 

@@ -2,6 +2,10 @@
 
 Ubuntu 24.04 VPS 1대에서 Docker Compose로 실행하는 기준이다. 실제 도메인과 서버 IP는 준비 후 `.env`에 넣는다.
 
+Vercel 단독 배포는 지원하지 않는다.
+변환에 Redis 큐, 상주 Audiveris 워커, web/worker가 공유하는 `/data`, 최대 20분의 작업 실행 환경이 필요하기 때문이다.
+전체 기능은 아래의 VPS + Docker Compose 구성으로만 배포한다.
+
 ## 1. 서버 준비
 
 ```bash
@@ -28,6 +32,8 @@ sudo ufw allow 443/tcp
 sudo ufw enable
 ```
 
+> Docker가 공개한 포트는 UFW 방화벽 규칙을 우회할 수 있다. 운영에서는 Caddy의 80/443만 열고 web 3000번과 Redis 6379번을 절대 호스트에 공개하지 말아야 한다.
+
 ## 3. 애플리케이션 배치
 
 ```bash
@@ -40,6 +46,14 @@ cp .env.example .env
 
 ## 4. 실행
 
+Compose 파일은 다음처럼 역할을 나눈다.
+
+- `docker-compose.yml`: 공통 서비스. web/Redis 호스트 포트는 없다.
+- `docker-compose.override.yml`: 로컬 개발 전용. `docker compose up`에서 자동 합병되어 web 3000번과 localhost Redis 6379번을 연다.
+- `docker-compose.prod.yml`: Caddy와 운영 이미지. 아래처럼 `-f`로 파일을 명시하면 개발용 override는 합병되지 않는다.
+
+VPS에서는 bare `docker compose up`을 실행하지 말고, 반드시 아래의 명시적인 두 `-f` 옵션을 그대로 사용한다.
+
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
@@ -50,9 +64,16 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
 ## 5. 확인
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f web
-docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f worker
+docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
+docker compose -f docker-compose.yml -f docker-compose.prod.yml logs --tail=100 web worker
+APP_DOMAIN="$(sed -n 's/^DOMAIN=//p' .env)"
+curl -I "https://${APP_DOMAIN}"
+curl --max-time 5 http://localhost:3000
 ```
+
+정상이면 web은 `healthy`, caddy는 `running`이다. HTTPS 응답에는 `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, `X-Frame-Options: SAMEORIGIN`이 있고 `Server` 헤더는 없어야 한다. `Strict-Transport-Security`는 실제 도메인일 때만 추가되며 localhost 리허설에서는 빠진다.
+
+`curl --max-time 5 http://localhost:3000`은 연결 실패해야 한다. 응답이 오면 개발용 `docker-compose.override.yml`이 운영 명령에 잘못 합병된 것이다.
 
 브라우저에서 `https://<DOMAIN>`으로 접속해 `samples/simple.pdf`를 업로드하고, 완료 후 미리보기와 다운로드를 확인한다.
 
