@@ -7,6 +7,7 @@ import { ConversionError, type ConversionJobData, type ConversionResult } from "
 
 const successResult: ConversionResult = {
   files: [],
+  suspectMeasures: [],
   durationMs: 1,
   warnings: [],
   totalSheets: 1,

@@ -23,8 +23,16 @@ export type ConversionWarning = {
   pages: number[];
 };
 
+export type SuspectMeasure = {
+  file: string;
+  part: string;
+  measure: number;
+  reason: "DURATION_MISMATCH";
+};
+
 export type ConversionResult = {
   files: ConversionFile[];
+  suspectMeasures: SuspectMeasure[];
   durationMs: number;
   warnings: ConversionWarning[];
   totalSheets: number | null;

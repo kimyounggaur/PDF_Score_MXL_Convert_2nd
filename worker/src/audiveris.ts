@@ -16,12 +16,14 @@ import type {
   ConversionFile,
   ConversionJobData,
   ConversionResult,
+  SuspectMeasure,
   ConversionWarning,
 } from "./types.js";
 import { ConversionError } from "./types.js";
 import { validateMxl, type MxlValidationResult } from "./validate-mxl.js";
 
 const ENGINE_TAIL_LINES = 30;
+const MAX_SUSPECT_MEASURES = 50;
 
 type EngineRunResult = {
   cancelled: boolean;
@@ -34,6 +36,7 @@ type EngineRunResult = {
 
 type InspectedOutputs = {
   files: ConversionFile[];
+  suspectMeasures: SuspectMeasure[];
   outputCount: number;
   allValid: boolean;
   invalidReasons: string[];
@@ -203,6 +206,7 @@ export async function runAudiverisConversion(
     throwIfCancelled(signal, lastRun, progressTracker, engineTail, initialTotalSheets, initialTargetSheets);
     return {
       files: outputs.files,
+      suspectMeasures: outputs.suspectMeasures,
       durationMs: Date.now() - startedAt,
       warnings,
       totalSheets: initialTotalSheets,
@@ -367,6 +371,7 @@ export async function inspectOutputs(
     .filter((name) => name.toLowerCase().endsWith(".mxl"))
     .sort(compareOutputFileNames);
   const files: ConversionFile[] = [];
+  const suspectMeasures: SuspectMeasure[] = [];
   const invalidReasons: string[] = [];
 
   for (const name of names) {
@@ -389,10 +394,23 @@ export async function inspectOutputs(
       measureCount: validation.measureCount,
       measuresPerPart: validation.measuresPerPart,
     });
+
+    const remainingSuspectSlots = MAX_SUSPECT_MEASURES - suspectMeasures.length;
+    if (remainingSuspectSlots > 0) {
+      suspectMeasures.push(
+        ...validation.suspectMeasures.slice(0, remainingSuspectSlots).map((suspect) => ({
+          file: name,
+          part: suspect.part,
+          measure: suspect.measure,
+          reason: suspect.reason,
+        })),
+      );
+    }
   }
 
   return {
     files,
+    suspectMeasures,
     outputCount: names.length,
     allValid: files.length > 0 && invalidReasons.length === 0 && files.length === names.length,
     invalidReasons,

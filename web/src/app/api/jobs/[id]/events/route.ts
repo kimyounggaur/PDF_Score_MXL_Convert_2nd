@@ -1,6 +1,6 @@
 import { errorMessage } from "@/lib/errors";
 import { getJobEventHub, type JobQueueEvent } from "@/lib/job-event-hub";
-import { getJobStatus, type JobStatus } from "@/lib/jobs";
+import { createDoneEventPayload, getJobStatus, type JobStatus } from "@/lib/jobs";
 import { isSafeJobId } from "@/lib/paths";
 import type { ConversionProgress } from "@/lib/queue";
 import { STATUS_QUERY_TIMEOUT_MS } from "@/lib/system-status";
@@ -95,7 +95,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
         }
 
         if (status.status === "completed") {
-          send("done", { files: status.files ?? [], warnings: status.warnings });
+          send("done", createDoneEventPayload(status));
           close();
         } else if (status.status === "failed" && status.error) {
           send("failed", status.error);

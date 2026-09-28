@@ -1,17 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { JobFile, JobProgress, JobStatus, JobWarning } from "@/lib/client-types";
-import { failedEventDisposition } from "@/lib/client-status";
-import { normalizeResultFiles } from "@/lib/result-files";
+import type { JobProgress, JobStatus } from "@/lib/client-types";
+import {
+  failedEventDisposition,
+  normalizeDoneEventData,
+  normalizeJobProgress,
+  normalizeJobStatus,
+} from "@/lib/client-status";
 
 const SSE_INACTIVITY_MS = 20_000;
 const POLL_INTERVAL_MS = 5_000;
-
-type DoneEventData = {
-  files: JobFile[];
-  warnings?: JobWarning[];
-};
 
 type FailedEventData = {
   code: string;
@@ -257,6 +256,7 @@ export function useJobStatus(jobId: string) {
           estimate: current?.estimate ?? null,
           files: data.files,
           warnings: data.warnings ?? current?.warnings ?? [],
+          suspectMeasures: data.suspectMeasures,
           error: null,
         }));
         setIsExpired(false);
@@ -300,6 +300,7 @@ export function useJobStatus(jobId: string) {
           estimate: current?.estimate ?? null,
           files: null,
           warnings: current?.warnings ?? [],
+          suspectMeasures: [],
           error: { code: data.code, message: data.message },
         }));
         setIsExpired(false);
@@ -329,26 +330,6 @@ export function useJobStatus(jobId: string) {
   }, [jobId]);
 
   return { status, statusReceivedAt, isLoading, isExpired, error };
-}
-
-function normalizeJobStatus(status: JobStatus): JobStatus {
-  return {
-    ...status,
-    progress: status.progress ? normalizeJobProgress(status.progress) : null,
-    queuePosition: typeof status.queuePosition === "number" ? status.queuePosition : null,
-    meta: status.meta ?? null,
-    timing: status.timing ?? null,
-    estimate: status.estimate ?? null,
-    files: normalizeResultFiles(status.files),
-    warnings: Array.isArray(status.warnings) ? status.warnings : [],
-  };
-}
-
-function normalizeJobProgress(progress: JobProgress): JobProgress {
-  return {
-    ...progress,
-    sheet: progress.sheet ?? null,
-  };
 }
 
 function isTerminal(status: JobStatus) {
@@ -383,23 +364,6 @@ function isJobProgress(value: unknown): value is JobProgress {
 
   const progress = value as { pct?: unknown; stage?: unknown };
   return typeof progress.pct === "number" && typeof progress.stage === "string";
-}
-
-function normalizeDoneEventData(value: unknown): DoneEventData | null {
-  if (typeof value !== "object" || value === null || !("files" in value)) {
-    return null;
-  }
-
-  const result = value as { files: unknown; warnings?: unknown };
-  const files = normalizeResultFiles(result.files);
-  if (!files) {
-    return null;
-  }
-
-  return {
-    files,
-    warnings: Array.isArray(result.warnings) ? (result.warnings as JobWarning[]) : undefined,
-  };
 }
 
 function isFailedEventData(value: unknown): value is FailedEventData {

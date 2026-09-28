@@ -1,5 +1,8 @@
 import { Job, Queue, QueueEvents, type ConnectionOptions } from "bullmq";
 import { getRedisUrl } from "./env";
+import type { SuspectMeasure } from "./suspect-measures";
+
+export type { SuspectMeasure } from "./suspect-measures";
 
 export const QUEUE_NAME = "conversion";
 
@@ -29,6 +32,7 @@ export type ConversionResult = {
   files: ConversionFile[];
   durationMs: number;
   warnings: ConversionWarning[];
+  suspectMeasures: SuspectMeasure[];
 };
 
 type ConversionQueue = Queue<ConversionJobData, ConversionResult, "convert">;

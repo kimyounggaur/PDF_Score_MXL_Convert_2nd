@@ -7,6 +7,7 @@ import { getConversionQueue, getJob, type ConversionProgress, type ConversionRes
 import { metadataPath, outputDir } from "./paths";
 import { getRedisClient } from "./redis";
 import { normalizeResultFiles, type ResultFile } from "./result-files";
+import { suspectMeasuresForStatus, type SuspectMeasure } from "./suspect-measures";
 import { withTimeout } from "./timeouts";
 
 export const SECONDS_PER_PAGE_REDIS_KEY = "conversion:seconds-per-page:v1";
@@ -19,6 +20,7 @@ export type JobStatus = {
   progress: ConversionProgress | null;
   files: ResultFile[] | null;
   warnings: ConversionWarning[];
+  suspectMeasures: SuspectMeasure[];
   error: { code: string; message: string } | null;
   queuePosition: number | null;
   meta: PublicJobMetadata | null;
@@ -49,6 +51,16 @@ export type JobEstimate = {
   sampleCount: number;
 };
 
+export function createDoneEventPayload(
+  status: Pick<JobStatus, "files" | "warnings" | "suspectMeasures">,
+) {
+  return {
+    files: status.files ?? [],
+    warnings: status.warnings,
+    suspectMeasures: suspectMeasuresForStatus("completed", status.suspectMeasures),
+  };
+}
+
 export async function getJobStatus(jobId: string): Promise<JobStatus | null> {
   const job = await getJob(jobId);
   if (!job) {
@@ -69,6 +81,7 @@ export async function getJobStatus(jobId: string): Promise<JobStatus | null> {
       progress: { pct: 100, stage: "completed", sheet: null },
       files: returnedFiles ?? (await listOutputFiles(jobId)),
       warnings: returnValue?.warnings ?? [],
+      suspectMeasures: suspectMeasuresForStatus(state, returnValue?.suspectMeasures),
       error: null,
       queuePosition: null,
       meta,
@@ -84,6 +97,7 @@ export async function getJobStatus(jobId: string): Promise<JobStatus | null> {
       progress,
       files: null,
       warnings: [],
+      suspectMeasures: [],
       error: {
         code,
         message: errorMessage(code),
@@ -109,6 +123,7 @@ export async function getJobStatus(jobId: string): Promise<JobStatus | null> {
     progress,
     files: null,
     warnings: [],
+    suspectMeasures: [],
     error: null,
     queuePosition,
     meta,

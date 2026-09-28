@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { ExternalLink, Loader2, Maximize2, Minimize2, Minus, Plus } from "lucide-react";
+import type { OpenSheetMusicDisplay } from "opensheetmusicdisplay";
 import type { JobFile, JobWarning } from "@/lib/client-types";
 import { cn, resultFileLabel } from "@/lib/ui";
 import { Alert } from "./ui/alert";
@@ -12,12 +13,10 @@ const MAX_ZOOM = 200;
 const ZOOM_STEP = 25;
 const PREVIEW_ERROR = "미리보기를 렌더링할 수 없습니다. 파일은 정상일 수 있으니 다운로드하여 MuseScore 등에서 열어보세요.";
 
-type OsmdInstance = {
-  Zoom: number;
-  load(input: Blob): Promise<unknown>;
-  render(): void;
-  renderAndScrollBack(): void;
-  clear(): void;
+export type ScorePreviewTarget = {
+  file: string;
+  measure: number;
+  requestId: number;
 };
 
 export function ScorePreview({
@@ -25,11 +24,13 @@ export function ScorePreview({
   files,
   sourcePages,
   warnings,
+  measureTarget,
 }: {
   jobId: string;
   files: JobFile[];
   sourcePages: number;
   warnings: JobWarning[];
+  measureTarget: ScorePreviewTarget | null;
 }) {
   const [selectedName, setSelectedName] = useState(files[0]?.name ?? "");
   const [sourcePage, setSourcePage] = useState(1);
@@ -41,14 +42,18 @@ export function ScorePreview({
   const [isDesktop, setIsDesktop] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [controlError, setControlError] = useState<string | null>(null);
+  const [navigationError, setNavigationError] = useState<string | null>(null);
+  const [navigationStatus, setNavigationStatus] = useState("");
   const previewRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const sourceTabRef = useRef<HTMLButtonElement>(null);
   const convertedTabRef = useRef<HTMLButtonElement>(null);
-  const osmdRef = useRef<OsmdInstance | null>(null);
+  const osmdRef = useRef<OpenSheetMusicDisplay | null>(null);
   const loadedKeyRef = useRef<string | null>(null);
   const loadVersionRef = useRef(0);
   const zoomRef = useRef(zoom);
+  const selectedNameRef = useRef(selectedName);
+  const activeTargetRef = useRef<ScorePreviewTarget | null>(null);
   const tabsId = useId();
   const pageCount = Number.isSafeInteger(sourcePages) && sourcePages > 0 ? sourcePages : 1;
   const selectedFile = files.find((file) => file.name === selectedName);
@@ -59,6 +64,26 @@ export function ScorePreview({
   const convertedPanelId = `${tabsId}-converted-panel`;
 
   zoomRef.current = zoom;
+  selectedNameRef.current = selectedName;
+
+  const revealActiveTarget = useCallback((osmd: OpenSheetMusicDisplay, fileName: string) => {
+    const target = activeTargetRef.current;
+    if (!target || target.file !== fileName) {
+      return;
+    }
+
+    if (revealSuspectMeasure(osmd, target.measure)) {
+      setNavigationError(null);
+      setNavigationStatus(`${target.measure}마디를 표시했습니다.`);
+    } else {
+      setNavigationStatus("");
+      setNavigationError(`${target.measure}마디 위치를 표시하지 못했습니다. 악보에서 직접 확인해 주세요.`);
+    }
+  }, []);
+
+  useEffect(() => {
+    activeTargetRef.current = measureTarget;
+  }, [measureTarget]);
 
   useEffect(() => {
     if (files.some((file) => file.name === selectedName)) {
@@ -90,6 +115,7 @@ export function ScorePreview({
       renderFrame = window.requestAnimationFrame(() => {
         if (loadedKeyRef.current && osmdRef.current) {
           osmdRef.current.renderAndScrollBack();
+          revealActiveTarget(osmdRef.current, selectedNameRef.current);
         }
       });
     };
@@ -99,7 +125,7 @@ export function ScorePreview({
       window.cancelAnimationFrame(renderFrame);
       document.removeEventListener("fullscreenchange", onFullscreenChange);
     };
-  }, []);
+  }, [revealActiveTarget]);
 
   useEffect(() => {
     const osmd = osmdRef.current;
@@ -110,11 +136,12 @@ export function ScorePreview({
     try {
       osmd.Zoom = zoom / 100;
       osmd.renderAndScrollBack();
+      revealActiveTarget(osmd, selectedNameRef.current);
       setError(null);
     } catch {
       setError(PREVIEW_ERROR);
     }
-  }, [zoom]);
+  }, [revealActiveTarget, zoom]);
 
   useEffect(() => {
     if ((!isDesktop && mobileTab !== "converted") || !loadedKeyRef.current || !osmdRef.current) {
@@ -124,12 +151,15 @@ export function ScorePreview({
     const frame = window.requestAnimationFrame(() => {
       try {
         osmdRef.current?.renderAndScrollBack();
+        if (osmdRef.current) {
+          revealActiveTarget(osmdRef.current, selectedNameRef.current);
+        }
       } catch {
         setError(PREVIEW_ERROR);
       }
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [isDesktop, mobileTab]);
+  }, [isDesktop, mobileTab, revealActiveTarget]);
 
   useEffect(() => {
     if (!selectedName || !containerRef.current) {
@@ -142,11 +172,13 @@ export function ScorePreview({
     loadedKeyRef.current = null;
     setIsLoading(true);
     setError(null);
+    setNavigationError(null);
 
     // Never leave the previously selected movement visible while the next
     // one is loading (or after its request fails), which could misidentify
     // stale notation as the newly selected result.
     if (osmdRef.current) {
+      hideSuspectMeasure(osmdRef.current);
       try {
         osmdRef.current.clear();
       } catch {
@@ -157,7 +189,7 @@ export function ScorePreview({
 
     const renderScore = async () => {
       try {
-        const [{ OpenSheetMusicDisplay }, response] = await Promise.all([
+        const [{ CursorType, OpenSheetMusicDisplay }, response] = await Promise.all([
           import("opensheetmusicdisplay"),
           fetch(`/api/jobs/${jobId}/files/${encodeURIComponent(selectedName)}`, { signal: controller.signal }),
         ]);
@@ -176,7 +208,17 @@ export function ScorePreview({
             backend: "svg",
             autoResize: true,
             drawTitle: true,
-          }) as OsmdInstance;
+            followCursor: false,
+            pageBackgroundColor: "#FFFFFF",
+            cursorsOptions: [
+              {
+                type: CursorType.CurrentArea,
+                color: "#B1304A",
+                alpha: 0.18,
+                follow: false,
+              },
+            ],
+          });
           osmdRef.current = osmd;
         }
         await osmd.load(blob);
@@ -191,6 +233,7 @@ export function ScorePreview({
         osmd.Zoom = zoomRef.current / 100;
         osmd.render();
         loadedKeyRef.current = key;
+        revealActiveTarget(osmd, selectedName);
       } catch (caught) {
         if (!controller.signal.aborted && loadVersionRef.current === version && !isAbortError(caught)) {
           setError(PREVIEW_ERROR);
@@ -204,7 +247,42 @@ export function ScorePreview({
 
     void renderScore();
     return () => controller.abort();
-  }, [jobId, selectedName]);
+  }, [jobId, revealActiveTarget, selectedName]);
+
+  useEffect(() => {
+    if (!measureTarget || activeTargetRef.current?.requestId !== measureTarget.requestId) {
+      return;
+    }
+
+    setMobileTab("converted");
+    setNavigationError(null);
+    setNavigationStatus("");
+
+    if (!files.some((file) => file.name === measureTarget.file)) {
+      activeTargetRef.current = null;
+      if (osmdRef.current) {
+        hideSuspectMeasure(osmdRef.current);
+      }
+      setNavigationError(`${measureTarget.measure}마디의 결과 파일을 찾지 못했습니다. 악보에서 직접 확인해 주세요.`);
+      return;
+    }
+
+    if (selectedNameRef.current !== measureTarget.file) {
+      setSelectedName(measureTarget.file);
+      return;
+    }
+
+    if (loadedKeyRef.current !== `${jobId}:${measureTarget.file}` || !osmdRef.current) {
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      if (osmdRef.current) {
+        revealActiveTarget(osmdRef.current, measureTarget.file);
+      }
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [files, jobId, measureTarget, revealActiveTarget]);
 
   useEffect(
     () => () => {
@@ -218,6 +296,16 @@ export function ScorePreview({
 
   const changeZoom = (value: number) => {
     setZoom(Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, value)));
+  };
+
+  const selectResultFile = (name: string) => {
+    activeTargetRef.current = null;
+    setNavigationError(null);
+    setNavigationStatus("");
+    if (osmdRef.current) {
+      hideSuspectMeasure(osmdRef.current);
+    }
+    setSelectedName(name);
   };
 
   const toggleFullscreen = async () => {
@@ -275,7 +363,7 @@ export function ScorePreview({
               <select
                 className="h-11 min-w-0 flex-1 border border-[#596873] bg-white px-3 text-sm text-[#17232D] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#245C9E] sm:max-w-48"
                 value={selectedName}
-                onChange={(event) => setSelectedName(event.target.value)}
+                onChange={(event) => selectResultFile(event.target.value)}
                 disabled={isLoading}
               >
                 {files.map((file, index) => (
@@ -337,6 +425,15 @@ export function ScorePreview({
           {controlError}
         </Alert>
       ) : null}
+
+      {navigationError ? (
+        <Alert tone="warning" role="status" data-testid="measure-navigation-error">
+          {navigationError}
+        </Alert>
+      ) : null}
+      <p className="sr-only" role="status" aria-live="polite" data-testid="measure-navigation-status">
+        {navigationStatus}
+      </p>
 
       <div className="grid grid-cols-2 border-b border-[#BCC7D0] lg:hidden" role="tablist" aria-label="미리보기 선택">
         <Button
@@ -491,4 +588,59 @@ function skippedPagesFromWarnings(warnings: JobWarning[]) {
 
 function isAbortError(value: unknown) {
   return value instanceof DOMException && value.name === "AbortError";
+}
+
+function hideSuspectMeasure(osmd: OpenSheetMusicDisplay) {
+  const cursor = osmd.cursor;
+  if (!cursor) {
+    return;
+  }
+
+  cursor.hide();
+  cursor.cursorElement.removeAttribute("data-testid");
+  cursor.cursorElement.removeAttribute("data-measure");
+}
+
+function revealSuspectMeasure(osmd: OpenSheetMusicDisplay, measure: number) {
+  try {
+    const cursor = osmd.cursor;
+    if (!cursor) {
+      return false;
+    }
+
+    hideSuspectMeasure(osmd);
+    const sourceMeasure = osmd.Sheet.SourceMeasures[measure - 1];
+    if (!sourceMeasure) {
+      return false;
+    }
+
+    const iterator = osmd.Sheet.MusicPartManager.getIterator(sourceMeasure.AbsoluteTimestamp);
+    if (iterator.CurrentMeasure?.measureListIndex !== sourceMeasure.measureListIndex) {
+      return false;
+    }
+
+    cursor.iterator = iterator;
+    cursor.show();
+    cursor.cursorElement.setAttribute("data-testid", "suspect-measure-highlight");
+    cursor.cursorElement.setAttribute("data-measure", String(measure));
+    cursor.cursorElement.setAttribute("aria-hidden", "true");
+    cursor.cursorElement.alt = "";
+    cursor.cursorElement.style.minHeight = "44px";
+    cursor.cursorElement.style.pointerEvents = "none";
+
+    try {
+      const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+      cursor.cursorElement.scrollIntoView({
+        behavior: reduceMotion ? "auto" : "smooth",
+        block: "center",
+        inline: "nearest",
+      });
+    } catch {
+      // The highlight itself is still useful when scrolling is unavailable.
+    }
+
+    return true;
+  } catch {
+    return false;
+  }
 }

@@ -1,5 +1,8 @@
 import type { ErrorCode } from "./errors";
 import type { ResultFile } from "./result-files";
+import type { SuspectMeasure } from "./suspect-measures";
+
+export type { SuspectMeasure } from "./suspect-measures";
 
 export type JobProgress = {
   pct: number;
@@ -42,6 +45,7 @@ export type JobStatus = {
   estimate: JobEstimate | null;
   files: JobFile[] | null;
   warnings: JobWarning[];
+  suspectMeasures: SuspectMeasure[];
   error: { code: ErrorCode | string; message: string } | null;
 };
 

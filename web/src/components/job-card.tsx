@@ -3,6 +3,7 @@
 import { Download, FileMusic, Loader2, RefreshCw, XCircle } from "lucide-react";
 import { useRef, useState } from "react";
 import type { JobStatus, StoredJob } from "@/lib/client-types";
+import { groupSuspectMeasureLocations, type SuspectMeasureLocation } from "@/lib/suspect-measures-ui";
 import {
   failureGuidance,
   formatBytes,
@@ -16,7 +17,7 @@ import {
   cn,
 } from "@/lib/ui";
 import { useJobStatus } from "@/hooks/use-job-status";
-import { ScorePreview } from "./score-preview";
+import { ScorePreview, type ScorePreviewTarget } from "./score-preview";
 import { Alert } from "./ui/alert";
 import { Badge } from "./ui/badge";
 import { Button, buttonClassName } from "./ui/button";
@@ -35,11 +36,13 @@ export function JobCard({
   onReplace: (jobId: string, replacement: StoredJob) => void;
 }) {
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [previewTarget, setPreviewTarget] = useState<ScorePreviewTarget | null>(null);
   const [cancelState, setCancelState] = useState<"idle" | "requesting" | "pending">("idle");
   const [cancelError, setCancelError] = useState<string | null>(null);
   const [isRetrying, setIsRetrying] = useState(false);
   const [retryError, setRetryError] = useState<string | null>(null);
   const retryInFlightRef = useRef(false);
+  const previewRequestSequenceRef = useRef(0);
   const { status, statusReceivedAt, isLoading, isExpired, error } = useJobStatus(job.jobId);
   const state: JobViewState = isExpired ? "expired" : (status?.status ?? "queued");
   const progress = status?.progress?.pct ?? 0;
@@ -59,6 +62,10 @@ export function JobCard({
       : state === "active" || state === "completed"
         ? "border-l-[#245C9E]"
         : "border-l-[#BCC7D0]";
+  const suspectLocations = groupSuspectMeasureLocations(
+    status?.suspectMeasures ?? [],
+    status?.files?.map((file) => file.name) ?? [],
+  );
 
   const cancelJob = async () => {
     if (cancelState !== "idle" || !isCancellable || !window.confirm("이 변환 작업을 취소할까요?")) {
@@ -119,6 +126,21 @@ export function JobCard({
       retryInFlightRef.current = false;
       setIsRetrying(false);
     }
+  };
+
+  const togglePreview = () => {
+    setPreviewTarget(null);
+    setIsPreviewOpen((value) => !value);
+  };
+
+  const showSuspectMeasure = (location: SuspectMeasureLocation) => {
+    previewRequestSequenceRef.current += 1;
+    setPreviewTarget({
+      file: location.file,
+      measure: location.measure,
+      requestId: previewRequestSequenceRef.current,
+    });
+    setIsPreviewOpen(true);
   };
 
   return (
@@ -253,6 +275,34 @@ export function JobCard({
 
             {state === "completed" && status?.files ? (
               <div className="space-y-4">
+                {suspectLocations.length > 0 ? (
+                  <Alert tone="warning" data-testid="suspect-measures">
+                    <p className="flex flex-wrap items-center gap-x-1 gap-y-2 font-semibold">
+                      <span>확인이 필요한 마디 {suspectLocations.length}곳:</span>{" "}
+                      {suspectLocations.map((location, index) => {
+                        const label = suspectLocationLabel(location, status.files ?? []);
+                        return (
+                          <span key={`${location.file}:${location.measure}`} className="inline-flex items-center gap-1">
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              className="px-2 underline underline-offset-2"
+                              onClick={() => showSuspectMeasure(location)}
+                              aria-label={`${label}마디 미리보기로 이동`}
+                              title={`자동 점검 신호가 있는 파트: ${location.parts.join(", ")}`}
+                              data-testid="suspect-measure-button"
+                            >
+                              {label}
+                            </Button>
+                            {index < suspectLocations.length - 1 ? <span aria-hidden="true">,{" "}</span> : null}
+                          </span>
+                        );
+                      })}
+                    </p>
+                    <p className="mt-2 text-[#596873]">자동 점검 결과입니다. 표시된 마디는 원본과 비교해 보세요.</p>
+                  </Alert>
+                ) : null}
                 <div className="flex flex-wrap gap-2">
                   {status.files.map((file, index) => (
                     <a
@@ -266,7 +316,7 @@ export function JobCard({
                       <span className="text-sm tabular-nums text-[#596873]">{formatBytes(file.bytes)}</span>
                     </a>
                   ))}
-                  <Button variant="primary" onClick={() => setIsPreviewOpen((value) => !value)}>
+                  <Button variant="primary" onClick={togglePreview}>
                     {isPreviewOpen ? "미리보기 닫기" : "미리보기"}
                   </Button>
                 </div>
@@ -276,6 +326,7 @@ export function JobCard({
                     files={status.files}
                     sourcePages={status.meta?.pages ?? 1}
                     warnings={status.warnings}
+                    measureTarget={previewTarget}
                   />
                 ) : null}
               </div>
@@ -309,6 +360,16 @@ export function JobCard({
       </CardContent>
     </Card>
   );
+}
+
+function suspectLocationLabel(location: SuspectMeasureLocation, files: NonNullable<JobStatus["files"]>) {
+  if (files.length <= 1) {
+    return String(location.measure);
+  }
+
+  const fileIndex = files.findIndex((file) => file.name === location.file);
+  const fileLabel = fileIndex >= 0 ? resultFileLabel(location.file, fileIndex, files.length) : location.file;
+  return `${fileLabel} ${location.measure}`;
 }
 
 type JobViewState = JobStatus["status"] | "expired";

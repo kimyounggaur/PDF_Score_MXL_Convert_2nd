@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import {
+  createDoneEventPayload,
   estimateForJob,
   listOutputFiles,
   metadataForRetry,
@@ -29,6 +30,15 @@ test("대기·지연 상태는 BullMQ의 기본 진행률 0을 노출하지 않�
 
 test("변환 중에는 저장된 진행률과 쪽 정보를 유지한다", () => {
   assert.deepEqual(progressForJobState("active", storedProgress), storedProgress);
+});
+
+test("SSE 완료 페이로드는 확인이 필요한 마디를 포함한다", () => {
+  const suspect = { file: "input.mxl", part: "P1", measure: 2, reason: "DURATION_MISMATCH" } as const;
+
+  assert.deepEqual(
+    createDoneEventPayload({ files: null, warnings: [], suspectMeasures: [suspect] }),
+    { files: [], warnings: [], suspectMeasures: [suspect] },
+  );
 });
 
 test("대기 순번은 1부터 시작하고 목록에 없으면 null이다", () => {

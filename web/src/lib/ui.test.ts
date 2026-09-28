@@ -73,6 +73,7 @@ function jobStatus(status: JobStatus["status"]): JobStatus {
     estimate: null,
     files: null,
     warnings: [],
+    suspectMeasures: [],
     error: null,
   };
 }

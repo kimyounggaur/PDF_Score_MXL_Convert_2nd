@@ -10,9 +10,17 @@
 2. Next.js API가 PDF와 옵션을 검증하고 `<DATA_DIR>/jobs/<jobId>/input.pdf`와 `metadata.json`으로 저장한다.
 3. API가 BullMQ `conversion` 큐에 `{ jobId }`만 등록한다.
 4. 워커가 `metadata.json`을 다시 검증한 뒤 쪽 범위는 Audiveris `-sheets`, 가사 언어는 OCR 언어 상수로 넘겨 별도 프로세스를 실행한다.
-5. 워커가 진행률과 완료/실패 결과를 BullMQ에 기록한다.
-6. API가 `GET /api/jobs/:id/events` SSE와 `GET /api/jobs/:id` 상태 조회로 진행률을 전달한다.
-7. 완료된 작업은 `GET /api/jobs/:id/files/:name`으로 MXL 파일을 다운로드하거나 OSMD 미리보기에 사용한다.
+5. 워커가 결과 MXL을 검증하면서 박자 길이가 맞지 않는 마디를 보수적으로 찾아 완료 결과의 `suspectMeasures`에 기록한다.
+6. 워커가 진행률과 완료/실패 결과를 BullMQ에 기록한다.
+7. API가 `GET /api/jobs/:id/events` SSE와 `GET /api/jobs/:id` 상태 조회로 진행률과 완료 결과를 전달한다.
+8. 완료된 작업은 `GET /api/jobs/:id/files/:name`으로 MXL 파일을 다운로드하거나 OSMD 미리보기에 사용한다.
+
+## 확인이 필요한 마디
+
+- 완료 결과 계약은 `suspectMeasures: [{ file, part, measure, reason: "DURATION_MISMATCH" }]`이다. `measure`는 MusicXML의 `number` 속성이 아니라 파일·파트 안에서 센 1부터 시작하는 물리적 마디 순서이며, 작업 전체에서 최대 50개만 반환한다. 구 버전 완료 결과처럼 필드가 없으면 빈 배열로 해석한다.
+- 파트·마디별로 일반 음표와 `<forward>`는 시간 커서를 전진시키고 `<backup>`은 되돌린다. `<chord/>`가 붙은 화음의 후속 음과 `<grace/>` 꾸밈음은 커서를 전진시키지 않는다. 커서의 최대 도달 길이를 해당 파트에서 상속된 `<divisions>`와 `<time>`의 기대 길이와 비교한다.
+- 각 파트의 첫 번째 물리적 마디, `implicit="yes"`, `non-controlling="yes"` 마디는 상태 갱신에는 사용하지만 결과에는 포함하지 않는다. 마디 중간 `<divisions>` 변경은 각 길이를 즉시 4분음표 단위 분수로 바꿔 계속 판정한다. 박자나 divisions가 없거나, 스태프별 `<time number="…">` 또는 마디 중간 박자 변경처럼 파트 전체 기대 길이를 확정할 수 없는 경우에는 오탐을 피하기 위해 판정을 생략한다. partwise와 timewise MusicXML을 모두 다루며, 엔진 로그의 `MeasureStack` 번호는 실제 마디와의 대응이 검증되지 않아 판정 신호로 사용하지 않는다.
+- 이 값은 변환 성공 여부를 바꾸지 않는 자동 점검 정보다. 완료 카드는 파일과 마디가 같은 항목을 한 번만 합쳐 `확인이 필요한 마디 N곳: …`으로 보여 준다. 사용자가 번호를 누르면 해당 결과 파일을 선택하고, 모바일에서는 변환 결과 탭을 연 뒤 OSMD 미리보기의 물리적 마디로 이동해 가능한 경우 강조한다. 안내 문구는 `자동 점검 결과입니다. 표시된 마디는 원본과 비교해 보세요.`로 단정하지 않는다.
 
 ## 제한
 
