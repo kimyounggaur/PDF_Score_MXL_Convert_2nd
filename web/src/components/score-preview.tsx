@@ -87,7 +87,11 @@ export function ScorePreview({ jobId, files }: { jobId: string; files: JobFile[]
   }, [jobId, selectedName]);
 
   return (
-    <div className="mt-4 space-y-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
+    <div
+      className="mt-4 space-y-4 rounded-lg border border-slate-200 bg-slate-50 p-4"
+      data-testid="score-preview"
+      aria-busy={isLoading}
+    >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <Alert tone="warning" className="sm:flex-1">
           자동 인식 결과입니다. 잇단음표·꾸밈음 등은 원본과 다를 수 있으니 다운로드 후 편집 프로그램에서 확인하세요.
@@ -120,7 +124,12 @@ export function ScorePreview({ jobId, files }: { jobId: string; files: JobFile[]
           미리보기를 렌더링하는 중입니다.
         </div>
       ) : null}
-      <div ref={containerRef} className="min-h-48 overflow-auto rounded-md bg-white p-4" />
+      <div
+        ref={containerRef}
+        className="min-h-48 overflow-auto rounded-md bg-white p-4"
+        role="region"
+        aria-label="변환된 악보 미리보기"
+      />
     </div>
   );
 }

@@ -1,9 +1,12 @@
 import type { ButtonHTMLAttributes } from "react";
 import { cn } from "@/lib/ui";
 
+export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
+export type ButtonSize = "sm" | "md";
+
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: "primary" | "secondary" | "ghost" | "danger";
-  size?: "sm" | "md";
+  variant?: ButtonVariant;
+  size?: ButtonSize;
 };
 
 const variants = {
@@ -19,16 +22,23 @@ const sizes = {
 };
 
 export function Button({ className, variant = "primary", size = "md", ...props }: ButtonProps) {
-  return (
-    <button
-      className={cn(
-        "inline-flex items-center justify-center gap-2 rounded-md font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700 disabled:cursor-not-allowed",
-        variants[variant],
-        sizes[size],
-        className,
-      )}
-      {...props}
-    />
+  return <button className={buttonClassName({ variant, size, className })} {...props} />;
+}
+
+export function buttonClassName({
+  className,
+  variant = "primary",
+  size = "md",
+}: {
+  className?: string;
+  variant?: ButtonVariant;
+  size?: ButtonSize;
+} = {}) {
+  return cn(
+    "inline-flex items-center justify-center gap-2 rounded-md font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700 disabled:cursor-not-allowed",
+    variants[variant],
+    sizes[size],
+    className,
   );
 }
 

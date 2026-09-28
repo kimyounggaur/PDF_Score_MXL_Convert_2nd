@@ -10,7 +10,12 @@ type ZipEntry = {
 };
 
 export type MxlValidationResult =
-  | { ok: true; rootFile: string; measureCount: number }
+  | {
+      ok: true;
+      rootFile: string;
+      measureCount: number;
+      measuresPerPart: Record<string, number>;
+    }
   | { ok: false; reason: string };
 
 const EOCD_SIGNATURE = 0x06054b50;
@@ -41,16 +46,22 @@ export async function validateMxl(filePath: string): Promise<MxlValidationResult
     }
 
     const xml = extractZipEntry(buffer, rootEntry).toString("utf8");
-    if (!/<score-(partwise|timewise)\b/i.test(xml)) {
+    const xmlWithoutComments = stripCommentsAndCdata(xml);
+    const scoreMatch = xmlWithoutComments.match(/<score-(partwise|timewise)(?=[\s>])/i);
+    if (!scoreMatch) {
       return { ok: false, reason: "INVALID_ROOT" };
     }
 
-    const measureCount = xml.match(/<measure\b/gi)?.length ?? 0;
+    const measureCount = xmlWithoutComments.match(/<measure(?=[\s>])/gi)?.length ?? 0;
     if (measureCount < 1) {
       return { ok: false, reason: "NO_MEASURES" };
     }
 
-    return { ok: true, rootFile, measureCount };
+    const measuresPerPart = scoreMatch[1].toLowerCase() === "partwise"
+      ? countPartwiseMeasures(xmlWithoutComments)
+      : countTimewiseMeasures(xmlWithoutComments);
+
+    return { ok: true, rootFile, measureCount, measuresPerPart };
   } catch (error) {
     return {
       ok: false,
@@ -131,5 +142,48 @@ function extractZipEntry(buffer: Buffer, entry: ZipEntry) {
 
 function parseRootFile(containerXml: string) {
   return containerXml.match(/full-path=["']([^"']+)["']/i)?.[1] ?? null;
+}
+
+function stripCommentsAndCdata(xml: string) {
+  return xml
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .replace(/<!\[CDATA\[[\s\S]*?\]\]>/g, "");
+}
+
+function countPartwiseMeasures(xml: string) {
+  const measuresPerPart: Record<string, number> = {};
+  const partPattern = /<part(?=[\s>])([^>]*)>([\s\S]*?)<\/part\s*>/gi;
+  let partIndex = 0;
+
+  for (const match of xml.matchAll(partPattern)) {
+    const partId = partIdFromAttributes(match[1], partIndex);
+    const measureCount = match[2].match(/<measure(?=[\s>])/gi)?.length ?? 0;
+    measuresPerPart[partId] = (measuresPerPart[partId] ?? 0) + measureCount;
+    partIndex += 1;
+  }
+
+  return measuresPerPart;
+}
+
+function countTimewiseMeasures(xml: string) {
+  const measuresPerPart: Record<string, number> = {};
+  const measurePattern = /<measure(?=[\s>])[^>]*>([\s\S]*?)<\/measure\s*>/gi;
+
+  for (const measureMatch of xml.matchAll(measurePattern)) {
+    const partPattern = /<part(?=[\s>])([^>]*)>/gi;
+    let partIndex = 0;
+    for (const partMatch of measureMatch[1].matchAll(partPattern)) {
+      const partId = partIdFromAttributes(partMatch[1], partIndex);
+      measuresPerPart[partId] = (measuresPerPart[partId] ?? 0) + 1;
+      partIndex += 1;
+    }
+  }
+
+  return measuresPerPart;
+}
+
+function partIdFromAttributes(attributes: string, index: number) {
+  const value = attributes.match(/\bid\s*=\s*(["'])(.*?)\1/i)?.[2]?.trim();
+  return value || `part-${index + 1}`;
 }
 

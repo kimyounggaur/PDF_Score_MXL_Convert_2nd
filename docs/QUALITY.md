@@ -23,3 +23,5 @@
 | PDF 쪽수·암호화 여부 | 6개 모두 기대값 일치, 비암호화 |
 | Docker/Audiveris 실변환 | 미실행 - Docker CLI 없음 |
 
+MXL 검증기는 정확한 `<measure>` 시작 태그만 세고 `measuresPerPart`를 함께 반환하도록 수정했다. 합성 partwise/timewise MXL 테스트는 통과했으며, 실제 Audiveris 결과의 simple 35마디·multi 106마디 검증은 결과 파일이 없어 테스트 TODO로 명시했다.
+

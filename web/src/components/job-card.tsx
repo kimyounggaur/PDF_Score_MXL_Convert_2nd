@@ -8,7 +8,7 @@ import { useJobStatus } from "@/hooks/use-job-status";
 import { ScorePreview } from "./score-preview";
 import { Alert } from "./ui/alert";
 import { Badge } from "./ui/badge";
-import { Button } from "./ui/button";
+import { Button, buttonClassName } from "./ui/button";
 import { Card, CardContent, CardHeader } from "./ui/card";
 import { Progress } from "./ui/progress";
 
@@ -17,6 +17,7 @@ export function JobCard({ job, onRemove }: { job: StoredJob; onRemove: (jobId: s
   const { status, isLoading, isExpired, error } = useJobStatus(job.jobId);
   const state: JobViewState = isExpired ? "expired" : (status?.status ?? "queued");
   const progress = status?.progress?.pct ?? 0;
+  const activeProgressLabel = progressLabel(status?.progress ?? { stage: "starting", sheet: null });
   const badge = badgeForState(state, isLoading, status?.queuePosition ?? null);
 
   return (
@@ -50,12 +51,25 @@ export function JobCard({ job, onRemove }: { job: StoredJob; onRemove: (jobId: s
           </div>
         ) : (
           <>
-            {error ? <Alert tone="error">{error}</Alert> : null}
+            {error ? (
+              <Alert tone="error" data-testid="job-error">
+                {error}
+              </Alert>
+            ) : null}
 
-            {state === "failed" && status?.error ? <Alert tone="error">{status.error.message}</Alert> : null}
+            {state === "failed" && status?.error ? (
+              <Alert tone="error" data-testid="job-error" data-error-code={status.error.code}>
+                {status.error.message}
+              </Alert>
+            ) : null}
 
             {status?.warnings.map((warning) => (
-              <Alert key={`${warning.code}:${warning.pages.join(",")}`} tone="warning">
+              <Alert
+                key={`${warning.code}:${warning.pages.join(",")}`}
+                tone="warning"
+                data-testid="job-warning"
+                data-warning-code={warning.code}
+              >
                 {skippedPagesLabel(warning.pages)}
               </Alert>
             ))}
@@ -65,10 +79,10 @@ export function JobCard({ job, onRemove }: { job: StoredJob; onRemove: (jobId: s
             ) : null}
 
             {state === "active" ? (
-              <div className="space-y-3" data-testid="job-progress">
-                <Progress value={progress} />
+              <div className="space-y-3">
+                <Progress value={progress} label={activeProgressLabel} />
                 <div className="flex items-center justify-between gap-3 text-sm text-slate-600">
-                  <span>{progressLabel(status?.progress ?? { stage: "starting", sheet: null })}</span>
+                  <span>{activeProgressLabel}</span>
                   <span className="font-mono text-xs">{Math.round(progress)}%</span>
                 </div>
               </div>
@@ -79,12 +93,15 @@ export function JobCard({ job, onRemove }: { job: StoredJob; onRemove: (jobId: s
                 <Alert tone="info">결과는 24시간 후 자동 삭제됩니다.</Alert>
                 <div className="flex flex-wrap gap-2">
                   {status.files.map((file, index) => (
-                    <a key={file.name} href={`/api/jobs/${job.jobId}/files/${encodeURIComponent(file.name)}`}>
-                      <Button variant="secondary">
-                        <Download className="h-4 w-4" aria-hidden="true" />
-                        {resultFileLabel(file.name, index, status.files?.length ?? 1)}
-                        <span className="font-mono text-xs text-slate-500">{formatBytes(file.bytes)}</span>
-                      </Button>
+                    <a
+                      key={file.name}
+                      href={`/api/jobs/${job.jobId}/files/${encodeURIComponent(file.name)}`}
+                      className={buttonClassName({ variant: "secondary" })}
+                      data-testid="download-link"
+                    >
+                      <Download className="h-4 w-4" aria-hidden="true" />
+                      {resultFileLabel(file.name, index, status.files?.length ?? 1)}
+                      <span className="font-mono text-xs text-slate-500">{formatBytes(file.bytes)}</span>
                     </a>
                   ))}
                   <Button variant="primary" onClick={() => setIsPreviewOpen((value) => !value)}>
