@@ -49,3 +49,4 @@
 ## 2차 개선 검증 메모
 
 - V2-1: 공개 PDF 3개를 내려받고 합성 PDF 3개를 생성해 `pdfinfo`와 PNG 렌더로 검증했다. web/worker `.dockerignore`, 재현 가능한 fixture 생성 스크립트, 설계서 실측 로그 기반 참조 픽스처를 추가했다. 현재 Windows 환경에는 Docker CLI가 없어 워커 이미지 빌드·스모크 테스트·Audiveris 로컬 재실측은 미실행이며 `docs/V2_BASELINE.md`에 한계를 기록했다.
+- V2-2: 진행률 90% 고정과 Redis 장애 시 비JSON 500/상태 조회 timeout을 로컬에서 재현했다. 나머지 문제는 코드 근거와 런타임 확인 불가를 구분해 `docs/V2_BASELINE.md`에 전수 기록했다. Docker가 필요한 전체 흐름·운영 리허설·E2E·코퍼스는 미실행이다.
