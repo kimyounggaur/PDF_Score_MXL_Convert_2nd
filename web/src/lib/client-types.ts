@@ -16,10 +16,32 @@ export type JobWarning = {
   pages: number[];
 };
 
+export type JobMeta = {
+  originalName: string;
+  bytes: number;
+  pages: number;
+  createdAt: string;
+};
+
+export type JobTiming = {
+  createdAt: number;
+  startedAt: number | null;
+  finishedAt: number | null;
+  elapsedMs: number;
+};
+
+export type JobEstimate = {
+  remainingSeconds: number;
+  sampleCount: number;
+};
+
 export type JobStatus = {
   status: "queued" | "active" | "completed" | "failed";
   progress: JobProgress | null;
   queuePosition: number | null;
+  meta: JobMeta | null;
+  timing: JobTiming | null;
+  estimate: JobEstimate | null;
   files: JobFile[] | null;
   warnings: JobWarning[];
   error: { code: ErrorCode | string; message: string } | null;

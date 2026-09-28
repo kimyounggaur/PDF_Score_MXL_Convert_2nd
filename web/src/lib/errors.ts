@@ -13,6 +13,7 @@ export type ErrorCode =
   | "WORKER_UNAVAILABLE"
   | "STORAGE_FULL"
   | "JOB_ALREADY_FINISHED"
+  | "JOB_NOT_RETRYABLE"
   | "CANCELLED"
   | "TIMEOUT"
   | "NO_OUTPUT"
@@ -35,6 +36,7 @@ const MESSAGES: Record<ErrorCode, string> = {
   WORKER_UNAVAILABLE: "변환 서버를 점검하고 있습니다. 잠시 후 다시 시도해 주세요.",
   STORAGE_FULL: "서버 저장 공간이 부족합니다. 잠시 후 다시 시도해 주세요.",
   JOB_ALREADY_FINISHED: "이미 완료되었거나 실패한 작업은 취소할 수 없습니다.",
+  JOB_NOT_RETRYABLE: "실패한 작업의 원본 파일이 남아 있을 때만 다시 시도할 수 있습니다.",
   CANCELLED: "변환을 취소했습니다.",
   TIMEOUT: "변환 시간이 20분을 초과했습니다. 페이지 수가 적은 파일로 나눠서 시도해 보세요.",
   NO_OUTPUT: "악보를 인식하지 못했습니다. 표지만 있거나 악보가 아닌 PDF일 수 있습니다. 300DPI 이상의 선명한 인쇄 악보인지 확인해 주세요.",

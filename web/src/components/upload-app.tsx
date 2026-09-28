@@ -1,23 +1,48 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { FileUp, Info, Loader2, Music2, ShieldCheck } from "lucide-react";
-import { useDropzone } from "react-dropzone";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FileUp, Info, Loader2, Music2, ShieldCheck, X } from "lucide-react";
+import { useDropzone, type FileRejection } from "react-dropzone";
 import type { StoredJob } from "@/lib/client-types";
 import { deserializeStoredJobs, pruneStoredJobs, serializeStoredJobs, STORED_JOBS_KEY } from "@/lib/job-storage";
-import { cn } from "@/lib/ui";
+import { dropRejectionMessage, cn } from "@/lib/ui";
+import { UploadError, uploadPdfWithXhr } from "@/lib/xhr-upload";
 import { useServiceStatus } from "@/hooks/use-service-status";
 import { Alert } from "./ui/alert";
 import { Button } from "./ui/button";
 import { Card, CardContent } from "./ui/card";
 import { JobCard } from "./job-card";
+import { Progress } from "./ui/progress";
+
+type UploadState = {
+  fileName: string;
+  current: number;
+  total: number;
+  percent: number;
+  phase: "transferring" | "verifying";
+};
 
 export function UploadApp() {
   const [jobs, setJobs] = useState<StoredJob[]>([]);
   const [message, setMessage] = useState<{ tone: "info" | "warning" | "error"; text: string } | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadState, setUploadState] = useState<UploadState | null>(null);
   const [isHydrated, setIsHydrated] = useState(false);
+  const batchSequenceRef = useRef(0);
+  const activeBatchRef = useRef<{ id: number; controller: AbortController } | null>(null);
+  const mountedRef = useRef(false);
   const { status: serviceStatus, isChecking: isCheckingService, isUnavailable, canUpload } = useServiceStatus();
+  const clock = useSharedClock(jobs.length > 0);
+
+  useEffect(() => {
+    mountedRef.current = true;
+
+    return () => {
+      mountedRef.current = false;
+      activeBatchRef.current?.controller.abort();
+      activeBatchRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     try {
@@ -41,63 +66,116 @@ export function UploadApp() {
     }
   }, [isHydrated, jobs]);
 
-  const uploadFile = useCallback(async (file: File) => {
+  const uploadFiles = useCallback(async (files: File[], rejectedMessage: string | null = null) => {
+    if (activeBatchRef.current) {
+      return;
+    }
+
+    if (files.length === 0) {
+      if (rejectedMessage) {
+        setMessage({ tone: "error", text: rejectedMessage });
+      }
+      return;
+    }
+
+    const batchId = ++batchSequenceRef.current;
+    const controller = new AbortController();
+    activeBatchRef.current = { id: batchId, controller };
     setIsUploading(true);
-    setMessage(null);
+    setMessage(rejectedMessage ? { tone: "error", text: rejectedMessage } : null);
+    let successCount = 0;
+    const failures: string[] = [];
 
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-      const response = await fetch("/api/jobs", {
-        method: "POST",
-        body: formData,
-      });
-      const data = await response.json();
-
-      if (!response.ok) {
-        setMessage({ tone: "error", text: data?.error?.message ?? "업로드에 실패했습니다." });
-        return;
+    for (const [index, file] of files.slice(0, 5).entries()) {
+      if (controller.signal.aborted) {
+        break;
       }
 
-      const nextJob: StoredJob = {
-        jobId: data.jobId,
-        fileName: file.name,
-        createdAt: new Date().toISOString(),
-      };
-      setJobs((current) => pruneStoredJobs([nextJob, ...current]));
-      setMessage({ tone: "info", text: "업로드가 완료되어 변환 대기열에 등록했습니다." });
-    } catch {
-      setMessage({ tone: "error", text: "업로드 중 문제가 발생했습니다. 다시 시도해 주세요." });
-    } finally {
-      setIsUploading(false);
+      setUploadState({ fileName: file.name, current: index + 1, total: files.length, percent: 0, phase: "transferring" });
+
+      try {
+        const result = await uploadPdfWithXhr(file, {
+          signal: controller.signal,
+          onProgress: ({ percent }) => {
+            if (mountedRef.current && activeBatchRef.current?.id === batchId) {
+              setUploadState({ fileName: file.name, current: index + 1, total: files.length, percent, phase: "transferring" });
+            }
+          },
+          onTransferComplete: () => {
+            if (mountedRef.current && activeBatchRef.current?.id === batchId) {
+              setUploadState((current) =>
+                current ? { ...current, percent: 100, phase: "verifying" } : current,
+              );
+            }
+          },
+        });
+
+        if (!mountedRef.current || activeBatchRef.current?.id !== batchId) {
+          return;
+        }
+
+        const nextJob: StoredJob = {
+          jobId: result.jobId,
+          fileName: file.name,
+          createdAt: new Date().toISOString(),
+        };
+        setJobs((current) => pruneStoredJobs([nextJob, ...current]));
+        successCount += 1;
+      } catch (caught) {
+        if (caught instanceof UploadError && caught.kind === "aborted") {
+          break;
+        }
+
+        const reason = caught instanceof Error ? caught.message : "업로드 중 문제가 발생했습니다. 다시 시도해 주세요.";
+        failures.push(`${file.name}: ${reason}`);
+      }
+    }
+
+    if (!mountedRef.current || activeBatchRef.current?.id !== batchId) {
+      return;
+    }
+
+    const wasAborted = controller.signal.aborted;
+    activeBatchRef.current = null;
+    setUploadState(null);
+    setIsUploading(false);
+
+    if (wasAborted) {
+      const suffix = successCount > 0 ? ` 먼저 등록된 ${successCount}개 작업은 계속 변환됩니다.` : "";
+      setMessage({ tone: "info", text: `업로드를 취소했습니다.${suffix}` });
+    } else if (failures.length > 0) {
+      setMessage({ tone: "error", text: failures.join(" / ") });
+    } else if (rejectedMessage) {
+      setMessage({ tone: "error", text: rejectedMessage });
+    } else {
+      setMessage({
+        tone: "info",
+        text: successCount === 1 ? "업로드가 완료되어 변환 대기열에 등록했습니다." : `${successCount}개 파일을 변환 대기열에 등록했습니다.`,
+      });
     }
   }, []);
 
   const onDrop = useCallback(
-    (acceptedFiles: File[]) => {
+    (acceptedFiles: File[], fileRejections: FileRejection[]) => {
       if (!canUpload) {
         return;
       }
 
-      const [file] = acceptedFiles;
-      if (file) {
-        void uploadFile(file);
-      }
+      const rejection = rejectionMessage(fileRejections);
+      void uploadFiles(acceptedFiles, rejection);
     },
-    [canUpload, uploadFile],
+    [canUpload, uploadFiles],
   );
 
   const { getRootProps, getInputProps, isDragActive, open } = useDropzone({
     onDrop,
     noClick: true,
     disabled: isUploading || !canUpload,
-    multiple: false,
+    multiple: true,
+    maxFiles: 5,
     maxSize: 30 * 1024 * 1024,
     accept: {
       "application/pdf": [".pdf"],
-    },
-    onDropRejected: () => {
-      setMessage({ tone: "error", text: "PDF 파일만 업로드할 수 있으며 최대 크기는 30MB입니다." });
     },
   });
 
@@ -106,12 +184,21 @@ export function UploadApp() {
       "인쇄 악보 전용입니다. 손글씨 악보는 지원하지 않습니다.",
       "300DPI 이상의 선명한 스캔본을 권장합니다.",
       "최대 30MB, 20쪽까지 변환할 수 있습니다.",
+      "보안이 설정된 PDF(열람 암호 또는 권한 제한)는 변환할 수 없습니다. 보안이 없는 원본 PDF로 다시 올려 주세요.",
     ],
     [],
   );
 
   const removeJob = useCallback((jobId: string) => {
     setJobs((current) => current.filter((item) => item.jobId !== jobId));
+  }, []);
+
+  const replaceJob = useCallback((jobId: string, replacement: StoredJob) => {
+    setJobs((current) => pruneStoredJobs([replacement, ...current.filter((item) => item.jobId !== jobId)]));
+  }, []);
+
+  const cancelUpload = useCallback(() => {
+    activeBatchRef.current?.controller.abort();
   }, []);
 
   return (
@@ -156,11 +243,36 @@ export function UploadApp() {
                 <p className="mt-5 text-lg font-semibold text-slate-950">
                   {isDragActive ? "여기에 놓으면 업로드합니다" : "PDF 악보를 끌어다 놓으세요"}
                 </p>
-                <p className="mt-2 text-sm text-slate-500">최대 30MB, 20쪽</p>
+                <p className="mt-2 text-sm text-slate-500">한 번에 5개 · 파일당 최대 30MB, 20쪽</p>
                 <Button className="mt-6" onClick={open} disabled={isUploading || !canUpload}>
                   <FileUp className="h-4 w-4" aria-hidden="true" />
                   {isCheckingService && !serviceStatus ? "서버 확인 중" : "PDF 선택"}
                 </Button>
+                {uploadState ? (
+                  <div className="mt-6 w-full max-w-md space-y-3" aria-live="polite" data-testid="upload-status">
+                    <div className="flex min-w-0 items-center justify-between gap-3 text-sm text-slate-700">
+                      <span className="min-w-0 truncate">
+                        {uploadState.current}/{uploadState.total} · {uploadState.fileName}
+                      </span>
+                      <span className="shrink-0 font-mono text-xs">
+                        {uploadState.phase === "transferring" ? `${uploadState.percent}%` : "서버 확인 중"}
+                      </span>
+                    </div>
+                    <Progress
+                      value={uploadState.percent}
+                      label={`${uploadState.fileName} 업로드`}
+                      testId="upload-progress"
+                    />
+                    {uploadState.phase === "transferring" ? (
+                      <Button type="button" variant="danger" size="sm" onClick={cancelUpload} data-testid="cancel-upload">
+                        <X className="h-4 w-4" aria-hidden="true" />
+                        업로드 취소
+                      </Button>
+                    ) : (
+                      <p className="text-xs text-slate-500">파일 전송을 마쳤습니다. PDF를 확인하고 있습니다.</p>
+                    )}
+                  </div>
+                ) : null}
               </div>
             </CardContent>
           </Card>
@@ -206,7 +318,7 @@ export function UploadApp() {
           ) : (
             <div className="space-y-4">
               {jobs.map((job) => (
-                <JobCard key={job.jobId} job={job} onRemove={removeJob} />
+                <JobCard key={job.jobId} job={job} clock={clock} onRemove={removeJob} onReplace={replaceJob} />
               ))}
             </div>
           )}
@@ -221,5 +333,29 @@ export function UploadApp() {
       </div>
     </main>
   );
+}
+
+function rejectionMessage(fileRejections: FileRejection[]) {
+  if (fileRejections.length === 0) {
+    return null;
+  }
+
+  return dropRejectionMessage(fileRejections.flatMap((rejection) => rejection.errors.map((error) => error.code)));
+}
+
+function useSharedClock(enabled: boolean) {
+  const [clock, setClock] = useState(0);
+
+  useEffect(() => {
+    if (!enabled) {
+      return;
+    }
+
+    setClock(Date.now());
+    const interval = window.setInterval(() => setClock(Date.now()), 1_000);
+    return () => window.clearInterval(interval);
+  }, [enabled]);
+
+  return clock;
 }
 

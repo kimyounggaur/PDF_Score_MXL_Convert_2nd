@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { JobFile, JobProgress, JobStatus, JobWarning } from "@/lib/client-types";
+import { failedEventDisposition } from "@/lib/client-status";
 
 const SSE_INACTIVITY_MS = 20_000;
 const POLL_INTERVAL_MS = 5_000;
@@ -22,6 +23,7 @@ export function useJobStatus(jobId: string) {
   const [isLoading, setIsLoading] = useState(true);
   const [isExpired, setIsExpired] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [statusReceivedAt, setStatusReceivedAt] = useState<number | null>(null);
 
   useEffect(() => {
     let disposed = false;
@@ -34,6 +36,7 @@ export function useJobStatus(jobId: string) {
     let pollController: AbortController | null = null;
 
     setStatus(null);
+    setStatusReceivedAt(null);
     setIsLoading(true);
     setIsExpired(false);
     setError(null);
@@ -69,6 +72,7 @@ export function useJobStatus(jobId: string) {
     const applyStatus = (nextStatus: JobStatus) => {
       const normalized = normalizeJobStatus(nextStatus);
       hasCanonicalStatus = true;
+      setStatusReceivedAt(Date.now());
       setStatus(normalized);
       setIsExpired(false);
       setIsLoading(false);
@@ -77,6 +81,15 @@ export function useJobStatus(jobId: string) {
       if (isTerminal(normalized)) {
         finishTerminalState();
       }
+    };
+
+    const applyExpiredState = () => {
+      setStatus(null);
+      setStatusReceivedAt(null);
+      setIsExpired(true);
+      setIsLoading(false);
+      setError(null);
+      finishTerminalState();
     };
 
     const syncStatus = async () => {
@@ -95,11 +108,7 @@ export function useJobStatus(jobId: string) {
         }
 
         if (response.status === 404) {
-          setStatus(null);
-          setIsExpired(true);
-          setIsLoading(false);
-          setError(null);
-          finishTerminalState();
+          applyExpiredState();
           return;
         }
 
@@ -236,11 +245,15 @@ export function useJobStatus(jobId: string) {
         }
 
         markSseDataReceived();
+        setStatusReceivedAt(Date.now());
         hasCanonicalStatus = true;
         setStatus((current) => ({
           status: "completed",
           progress: { pct: 100, stage: "completed", sheet: null },
           queuePosition: null,
+          meta: current?.meta ?? null,
+          timing: current?.timing ?? null,
+          estimate: current?.estimate ?? null,
           files: data.files,
           warnings: data.warnings ?? current?.warnings ?? [],
           error: null,
@@ -262,18 +275,28 @@ export function useJobStatus(jobId: string) {
 
         markSseDataReceived();
 
-        if (data.recoverable) {
+        const disposition = failedEventDisposition(data);
+        if (disposition === "expired") {
+          applyExpiredState();
+          return;
+        }
+
+        if (disposition === "recoverable") {
           setIsLoading(!hasCanonicalStatus);
           setError(data.message);
           startPolling(true);
           return;
         }
 
+        setStatusReceivedAt(Date.now());
         hasCanonicalStatus = true;
         setStatus((current) => ({
           status: "failed",
           progress: current?.progress ?? null,
           queuePosition: null,
+          meta: current?.meta ?? null,
+          timing: current?.timing ?? null,
+          estimate: current?.estimate ?? null,
           files: null,
           warnings: current?.warnings ?? [],
           error: { code: data.code, message: data.message },
@@ -304,7 +327,7 @@ export function useJobStatus(jobId: string) {
     };
   }, [jobId]);
 
-  return { status, isLoading, isExpired, error };
+  return { status, statusReceivedAt, isLoading, isExpired, error };
 }
 
 function normalizeJobStatus(status: JobStatus): JobStatus {
@@ -312,6 +335,9 @@ function normalizeJobStatus(status: JobStatus): JobStatus {
     ...status,
     progress: status.progress ? normalizeJobProgress(status.progress) : null,
     queuePosition: typeof status.queuePosition === "number" ? status.queuePosition : null,
+    meta: status.meta ?? null,
+    timing: status.timing ?? null,
+    estimate: status.estimate ?? null,
     warnings: Array.isArray(status.warnings) ? status.warnings : [],
   };
 }

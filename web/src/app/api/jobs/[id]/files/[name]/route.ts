@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { NextResponse } from "next/server";
 import { jsonError } from "@/lib/api-response";
-import { downloadName } from "@/lib/filenames";
+import { attachmentContentDisposition, downloadName } from "@/lib/filenames";
 import { getJobStatus, listOutputFiles, readJobMetadata } from "@/lib/jobs";
 import { assertInside, isSafeJobId, outputDir } from "@/lib/paths";
 import { STATUS_QUERY_TIMEOUT_MS } from "@/lib/system-status";
@@ -37,22 +37,21 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
     const filePath = assertInside(outDir, path.join(outDir, name));
     const bytes = await readFile(filePath);
     const metadata = await readJobMetadata(id);
-    const safeDownloadName = downloadName(metadata?.originalName, name);
+    const safeDownloadName = downloadName(
+      metadata?.originalName,
+      name,
+      files.map((file) => file.name),
+    );
 
     return new NextResponse(new Uint8Array(bytes), {
       headers: {
         "Content-Type": "application/vnd.recordare.musicxml",
-        "Content-Disposition": contentDisposition(safeDownloadName),
+        "Content-Disposition": attachmentContentDisposition(safeDownloadName),
         "X-Content-Type-Options": "nosniff",
       },
     });
   } catch {
     return jsonError("FILE_NOT_FOUND", 404);
   }
-}
-
-function contentDisposition(fileName: string) {
-  const fallback = fileName.replace(/[^\x20-\x7E]/g, "_");
-  return `attachment; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(fileName)}`;
 }
 

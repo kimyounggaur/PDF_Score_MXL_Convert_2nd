@@ -40,7 +40,7 @@ test("B. 텍스트 파일은 정확한 한국어 문구로 거부한다", async 
     await page.goto("/");
     await waitForUploadReady(page);
     await page.locator('input[type="file"]').setInputFiles(textPath);
-    await expect(page.getByText("PDF 파일만 업로드할 수 있으며 최대 크기는 30MB입니다.", { exact: true })).toBeVisible();
+    await expect(page.getByText("PDF가 아닙니다", { exact: true })).toBeVisible();
     await expect(page.getByTestId("job-card")).toHaveCount(0);
   } finally {
     await unlink(textPath).catch(() => undefined);

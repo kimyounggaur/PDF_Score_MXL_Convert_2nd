@@ -1,8 +1,8 @@
-import { errorMessage, normalizeFailureCode } from "@/lib/errors";
+import { errorMessage } from "@/lib/errors";
 import { getJobEventHub, type JobQueueEvent } from "@/lib/job-event-hub";
 import { getJobStatus, type JobStatus } from "@/lib/jobs";
 import { isSafeJobId } from "@/lib/paths";
-import type { ConversionFile, ConversionProgress, ConversionWarning } from "@/lib/queue";
+import type { ConversionProgress } from "@/lib/queue";
 import { STATUS_QUERY_TIMEOUT_MS } from "@/lib/system-status";
 import { withTimeout } from "@/lib/timeouts";
 
@@ -139,17 +139,16 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
         }
 
         if (event.type === "completed") {
-          currentState = "completed";
-          send("done", normalizeCompletedResult(event.returnvalue));
-          close();
+          // QueueEvents fires after BullMQ has stored the terminal job state.
+          // Re-read it so meta/timing/estimate and the final file list arrive
+          // in one authoritative snapshot before the compatibility `done`
+          // event closes the stream.
+          await refreshStatus();
           return;
         }
 
         if (event.type === "failed") {
-          currentState = "failed";
-          const code = normalizeFailureCode(event.failedReason);
-          send("failed", { code, message: errorMessage(code) });
-          close();
+          await refreshStatus();
           return;
         }
 
@@ -261,60 +260,4 @@ function normalizeSheet(value: unknown): { current: number; total: number } | nu
   }
 
   return { current: sheet.current, total: sheet.total };
-}
-
-function normalizeCompletedResult(returnvalue: unknown): { files: ConversionFile[]; warnings: ConversionWarning[] } {
-  const value = parseReturnValue(returnvalue);
-  if (typeof value !== "object" || value === null) {
-    return { files: [], warnings: [] };
-  }
-
-  const result = value as { files?: unknown; warnings?: unknown };
-  return {
-    files: Array.isArray(result.files) ? result.files.filter(isConversionFile) : [],
-    warnings: normalizeCompletedWarnings(result.warnings),
-  };
-}
-
-function parseReturnValue(returnvalue: unknown): unknown {
-  if (typeof returnvalue !== "string") {
-    return returnvalue;
-  }
-
-  try {
-    return JSON.parse(returnvalue) as unknown;
-  } catch {
-    return null;
-  }
-}
-
-function normalizeCompletedWarnings(warnings: unknown): ConversionWarning[] {
-  if (!Array.isArray(warnings)) {
-    return [];
-  }
-
-  return warnings.flatMap((warning) => {
-    if (typeof warning !== "object" || warning === null || !("code" in warning) || !("pages" in warning)) {
-      return [];
-    }
-
-    const value = warning as { code: unknown; pages: unknown };
-    if (value.code !== "SKIPPED_PAGES" || !Array.isArray(value.pages)) {
-      return [];
-    }
-
-    const pages = value.pages.filter((page): page is number => typeof page === "number" && Number.isSafeInteger(page) && page > 0);
-    return pages.length > 0 ? [{ code: "SKIPPED_PAGES" as const, pages }] : [];
-  });
-}
-
-function isConversionFile(file: unknown): file is ConversionFile {
-  return (
-    typeof file === "object" &&
-    file !== null &&
-    "name" in file &&
-    "bytes" in file &&
-    typeof (file as { name: unknown }).name === "string" &&
-    typeof (file as { bytes: unknown }).bytes === "number"
-  );
 }

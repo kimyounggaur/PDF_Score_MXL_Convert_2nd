@@ -357,7 +357,7 @@ async function runEngineProcess(options: {
 async function inspectOutputs(outDir: string): Promise<InspectedOutputs> {
   const names = (await readdir(outDir))
     .filter((name) => name.toLowerCase().endsWith(".mxl"))
-    .sort((left, right) => left.localeCompare(right, "en"));
+    .sort(compareOutputFileNames);
   const files: ConversionFile[] = [];
   const invalidReasons: string[] = [];
 
@@ -382,6 +382,27 @@ async function inspectOutputs(outDir: string): Promise<InspectedOutputs> {
     allValid: files.length > 0 && invalidReasons.length === 0 && files.length === names.length,
     invalidReasons,
   };
+}
+
+export function compareOutputFileNames(left: string, right: string) {
+  const leftMovement = movementNumberForOutput(left);
+  const rightMovement = movementNumberForOutput(right);
+
+  if (leftMovement !== null && rightMovement !== null && leftMovement !== rightMovement) {
+    return leftMovement - rightMovement;
+  }
+
+  return left.localeCompare(right, "en", { numeric: true, sensitivity: "base" });
+}
+
+function movementNumberForOutput(name: string) {
+  const match = name.match(/\.mvt(\d+)\.mxl$/i);
+  if (!match) {
+    return null;
+  }
+
+  const value = Number(match[1]);
+  return Number.isSafeInteger(value) && value > 0 ? value : null;
 }
 
 function conversionFailure(

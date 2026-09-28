@@ -1,9 +1,19 @@
 "use client";
 
 import { Download, FileMusic, Loader2, RefreshCw, XCircle } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { JobStatus, StoredJob } from "@/lib/client-types";
-import { formatBytes, progressLabel, resultFileLabel, skippedPagesLabel } from "@/lib/ui";
+import {
+  failureGuidance,
+  formatBytes,
+  formatElapsed,
+  formatEstimatedMinutes,
+  currentElapsedMs,
+  currentEstimateSeconds,
+  progressLabel,
+  resultFileLabel,
+  skippedPagesLabel,
+} from "@/lib/ui";
 import { useJobStatus } from "@/hooks/use-job-status";
 import { ScorePreview } from "./score-preview";
 import { Alert } from "./ui/alert";
@@ -12,17 +22,36 @@ import { Button, buttonClassName } from "./ui/button";
 import { Card, CardContent, CardHeader } from "./ui/card";
 import { Progress } from "./ui/progress";
 
-export function JobCard({ job, onRemove }: { job: StoredJob; onRemove: (jobId: string) => void }) {
+export function JobCard({
+  job,
+  clock,
+  onRemove,
+  onReplace,
+}: {
+  job: StoredJob;
+  clock: number;
+  onRemove: (jobId: string) => void;
+  onReplace: (jobId: string, replacement: StoredJob) => void;
+}) {
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [cancelState, setCancelState] = useState<"idle" | "requesting" | "pending">("idle");
   const [cancelError, setCancelError] = useState<string | null>(null);
-  const { status, isLoading, isExpired, error } = useJobStatus(job.jobId);
+  const [isRetrying, setIsRetrying] = useState(false);
+  const [retryError, setRetryError] = useState<string | null>(null);
+  const retryInFlightRef = useRef(false);
+  const { status, statusReceivedAt, isLoading, isExpired, error } = useJobStatus(job.jobId);
   const state: JobViewState = isExpired ? "expired" : (status?.status ?? "queued");
   const progress = status?.progress?.pct ?? 0;
   const activeProgressLabel = progressLabel(status?.progress ?? { stage: "starting", sheet: null });
   const isCancelled = state === "failed" && status?.error?.code === "CANCELLED";
   const isCancellable = status?.status === "queued" || status?.status === "active";
   const badge = badgeForState(state, isLoading, status?.queuePosition ?? null, cancelState, isCancelled);
+  const elapsedMs = currentElapsedMs(status, clock, statusReceivedAt);
+  const estimate =
+    (state === "queued" || state === "active") && status?.estimate && status.estimate.sampleCount >= 3
+      ? status.estimate
+      : null;
+  const estimateSeconds = estimate ? currentEstimateSeconds(status, clock, statusReceivedAt) : null;
 
   const cancelJob = async () => {
     if (cancelState !== "idle" || !isCancellable || !window.confirm("이 변환 작업을 취소할까요?")) {
@@ -54,20 +83,60 @@ export function JobCard({ job, onRemove }: { job: StoredJob; onRemove: (jobId: s
     }
   };
 
+  const retryJob = async () => {
+    if (retryInFlightRef.current || state !== "failed") {
+      return;
+    }
+
+    retryInFlightRef.current = true;
+    setIsRetrying(true);
+    setRetryError(null);
+
+    try {
+      const response = await fetch(`/api/jobs/${job.jobId}/retry`, { method: "POST" });
+      const data: unknown = await response.json().catch(() => null);
+
+      if (response.status !== 201 || !isRetryResponse(data)) {
+        setRetryError(readApiErrorMessage(data) ?? "다시 시도할 작업을 만들지 못했습니다. 잠시 후 다시 시도해 주세요.");
+        return;
+      }
+
+      onReplace(job.jobId, {
+        jobId: data.jobId,
+        fileName: status?.meta?.originalName ?? job.fileName,
+        createdAt: new Date().toISOString(),
+      });
+    } catch {
+      setRetryError("다시 시도할 작업을 만들지 못했습니다. 잠시 후 다시 시도해 주세요.");
+    } finally {
+      retryInFlightRef.current = false;
+      setIsRetrying(false);
+    }
+  };
+
   return (
     <Card className={isExpired ? "border-slate-200 bg-slate-100 shadow-none" : undefined} data-testid="job-card">
-      <CardHeader className="flex flex-row items-start justify-between gap-4">
-        <div className="min-w-0">
+      <CardHeader className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:gap-4">
+        <div className="min-w-0 max-w-full">
           <div className="flex items-center gap-2">
             <FileMusic className="h-4 w-4 shrink-0 text-teal-700" aria-hidden="true" />
             <h2 className="truncate text-base font-semibold text-slate-950">{job.fileName}</h2>
           </div>
-          <p className="mt-1 text-xs text-slate-500">작업 ID: {job.jobId.slice(0, 8)}</p>
+          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
+            <span>작업 ID: {job.jobId.slice(0, 8)}</span>
+            {status?.meta ? (
+              <span data-testid="job-meta">
+                원본 {status.meta.pages}쪽 · {formatBytes(status.meta.bytes)}
+              </span>
+            ) : null}
+          </div>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <Badge tone={badge.tone} data-testid="job-status">
-            {badge.label}
-          </Badge>
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:shrink-0 sm:justify-end">
+          <span aria-live="polite">
+            <Badge tone={badge.tone} data-testid="job-status">
+              {badge.label}
+            </Badge>
+          </span>
           {isCancellable ? (
             <Button
               variant="danger"
@@ -114,10 +183,30 @@ export function JobCard({ job, onRemove }: { job: StoredJob; onRemove: (jobId: s
               </Alert>
             ) : null}
 
-            {state === "failed" && status?.error ? (
-              <Alert tone="error" data-testid="job-error" data-error-code={status.error.code}>
-                {status.error.message}
+            {retryError ? (
+              <Alert tone="error" role="alert" data-testid="retry-error">
+                {retryError}
               </Alert>
+            ) : null}
+
+            {state === "failed" && status?.error ? (
+              <div className="space-y-3">
+                <Alert tone="error" data-testid="job-error" data-error-code={status.error.code}>
+                  {status.error.message}
+                </Alert>
+                <div className="rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700" data-testid="failure-guidance">
+                  <p className="font-medium text-slate-900">확인해 볼 사항</p>
+                  <ul className="mt-2 list-disc space-y-1 pl-5">
+                    {failureGuidance(status.error.code).map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+                <Button type="button" variant="secondary" onClick={() => void retryJob()} disabled={isRetrying} data-testid="retry-job">
+                  {isRetrying ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <RefreshCw className="h-4 w-4" aria-hidden="true" />}
+                  {isRetrying ? "새 작업 만드는 중" : "다시 시도"}
+                </Button>
+              </div>
             ) : null}
 
             {status?.warnings.map((warning) => (
@@ -132,7 +221,10 @@ export function JobCard({ job, onRemove }: { job: StoredJob; onRemove: (jobId: s
             ))}
 
             {state === "queued" && !isLoading ? (
-              <p className="text-sm text-slate-600">변환을 기다리고 있습니다.</p>
+              <div className="space-y-1 text-sm text-slate-600">
+                <p>변환을 기다리고 있습니다.</p>
+                {status?.queuePosition && status.queuePosition > 0 ? <p>대기 순번: {status.queuePosition}번째</p> : null}
+              </div>
             ) : null}
 
             {state === "active" ? (
@@ -147,13 +239,12 @@ export function JobCard({ job, onRemove }: { job: StoredJob; onRemove: (jobId: s
 
             {state === "completed" && status?.files ? (
               <div className="space-y-4">
-                <Alert tone="info">결과는 24시간 후 자동 삭제됩니다.</Alert>
                 <div className="flex flex-wrap gap-2">
                   {status.files.map((file, index) => (
                     <a
                       key={file.name}
                       href={`/api/jobs/${job.jobId}/files/${encodeURIComponent(file.name)}`}
-                      className={buttonClassName({ variant: "secondary" })}
+                      className={buttonClassName({ variant: "secondary", className: "max-w-full" })}
                       data-testid="download-link"
                     >
                       <Download className="h-4 w-4" aria-hidden="true" />
@@ -167,6 +258,23 @@ export function JobCard({ job, onRemove }: { job: StoredJob; onRemove: (jobId: s
                 </div>
                 {isPreviewOpen ? <ScorePreview jobId={job.jobId} files={status.files} /> : null}
               </div>
+            ) : null}
+
+            {!isLoading && !isExpired && (status?.timing || estimate) ? (
+              <dl className="mt-4 flex flex-wrap gap-x-6 gap-y-2 border-t border-slate-100 pt-3 text-xs text-slate-500">
+                {status?.timing ? (
+                  <div className="flex gap-1" data-testid="job-elapsed">
+                    <dt>경과 시간:</dt>
+                    <dd>{formatElapsed(elapsedMs)}</dd>
+                  </div>
+                ) : null}
+                {estimate && estimateSeconds !== null ? (
+                  <div className="flex gap-1" data-testid="job-estimate">
+                    <dt>예상 남은 시간:</dt>
+                    <dd>{formatEstimatedMinutes(estimateSeconds)}</dd>
+                  </div>
+                ) : null}
+              </dl>
             ) : null}
 
             {isLoading ? (
@@ -237,4 +345,8 @@ function readApiErrorMessage(value: unknown) {
 
   const message = (error as { message?: unknown }).message;
   return typeof message === "string" ? message : null;
+}
+
+function isRetryResponse(value: unknown): value is { jobId: string } {
+  return typeof value === "object" && value !== null && "jobId" in value && typeof (value as { jobId: unknown }).jobId === "string";
 }

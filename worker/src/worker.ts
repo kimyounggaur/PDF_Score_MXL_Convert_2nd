@@ -3,6 +3,7 @@ import { Redis } from "ioredis";
 import { QUEUE_NAME, getRedisUrl } from "./config.js";
 import { getRedisConnectionOptions } from "./queue.js";
 import { startWorkerHeartbeat } from "./control.js";
+import { recordCompletedProcessingMetric } from "./metrics.js";
 import { createConversionProcessor } from "./processor.js";
 import type { ConversionJobData, ConversionResult } from "./types.js";
 import { startMaintenance } from "./maintenance.js";
@@ -63,6 +64,12 @@ worker.on("failed", (job, error) => {
       message: error.message,
     }),
   );
+});
+
+worker.on("completed", (job, result) => {
+  // BullMQ has committed the terminal state before this event. Recording here
+  // ensures cancelled/failed jobs never enter the "recent completed" sample.
+  void recordCompletedProcessingMetric(controlRedis, result, { jobId: job.data.jobId });
 });
 
 worker.on("error", (error) => {

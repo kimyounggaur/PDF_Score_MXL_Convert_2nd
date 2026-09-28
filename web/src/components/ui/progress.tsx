@@ -1,6 +1,16 @@
 import { cn } from "@/lib/ui";
 
-export function Progress({ value, label = "변환 진행률", className }: { value: number; label?: string; className?: string }) {
+export function Progress({
+  value,
+  label = "변환 진행률",
+  className,
+  testId = "job-progress",
+}: {
+  value: number;
+  label?: string;
+  className?: string;
+  testId?: string;
+}) {
   const pct = Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 0;
   const roundedPct = Math.round(pct);
 
@@ -13,7 +23,7 @@ export function Progress({ value, label = "변환 진행률", className }: { val
       aria-valuemax={100}
       aria-valuenow={roundedPct}
       aria-valuetext={`${label} · ${roundedPct}%`}
-      data-testid="job-progress"
+      data-testid={testId}
     >
       <div className="h-full rounded-full bg-teal-700 transition-all duration-500" style={{ width: `${pct}%` }} />
     </div>
